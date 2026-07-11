@@ -1,0 +1,2 @@
+# Build metadata should not dominate the educational language comparison.
+c/Makefile linguist-detectable=false

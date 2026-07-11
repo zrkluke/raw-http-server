@@ -1,0 +1,34 @@
+# Operating systems and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+
+# C build artifacts
+c/build/
+c/bin/
+c/*.o
+c/*.obj
+c/*.exe
+c/*.out
+c/raw-http-server-c
+
+# Go build and test artifacts
+go/bin/
+go/coverage.out
+go/*.test
+
+# Rust build artifacts
+rust/target/
+
+# Shared test outputs
+coverage/
+tmp/
+*.log
