@@ -64,7 +64,6 @@ TCP 與 HTTP 功能會從 `step-1-http-streams` 開始依序以 TDD 實作。
 
 - 前一狀態：`main` 的三語言空專案骨架。
 - 目前分支：`step-0-foundation`。
-- 第一版固定快照：
-  [`step-0-foundation-v1`](https://github.com/zrkluke/raw-http-server/tree/step-0-foundation-v1)。
-- 本次 README 修訂驗收後發布：`step-0-foundation-v2`。
+- 推薦固定快照：
+  [`step-0-foundation-v2`](https://github.com/zrkluke/raw-http-server/tree/step-0-foundation-v2)。
 - 下一步：`step-1-http-streams`。
