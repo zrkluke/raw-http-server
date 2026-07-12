@@ -9,7 +9,7 @@
 
 ## 2. Milestone 1 - HTTP Streams
 
-- [ ] 2.1 Add failing shared acceptance fixtures for complete and fragmented CRLF-delimited streams
+- [x] 2.1 Add failing shared acceptance fixtures for complete and fragmented CRLF-delimited streams
 - [ ] 2.2 Implement and unit-test the stream line reader in Go
 - [ ] 2.3 Implement and unit-test the equivalent stream line reader in C
 - [ ] 2.4 Implement and unit-test the equivalent stream line reader in Rust
