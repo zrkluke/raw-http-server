@@ -13,7 +13,7 @@
 - [x] 2.2 Implement and unit-test the stream line reader in Go
 - [x] 2.3 Implement and unit-test the equivalent stream line reader in C
 - [x] 2.4 Implement and unit-test the equivalent stream line reader in Rust
-- [ ] 2.5 Run unified regression and quality checks, document the comparison, and create the verified milestone ref
+- [x] 2.5 Run unified regression and quality checks, document the comparison, and create the verified milestone ref
 
 ## 3. Milestone 2 - TCP
 
