@@ -21,8 +21,14 @@ Rust、Git、專案複製及骨架驗證流程，請參考
 make verify
 ```
 
-此命令會依序建置並執行 C、Go、Rust 的原生測試入口；任一語言失敗時，
-整體驗證也會失敗。
+此命令會依序執行三種語言的測試與品質檢查：
+
+- C：嚴格 compiler warnings、原生測試、AddressSanitizer 與
+  UndefinedBehaviorSanitizer。
+- Go：`gofmt`、`go vet` 與 `go test`。
+- Rust：`cargo fmt`、`cargo clippy` 與 `cargo test`。
+
+任一檢查失敗時，整體驗證也會失敗。
 
 ## 學習目標
 
