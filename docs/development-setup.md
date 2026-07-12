@@ -112,7 +112,14 @@ ls
 
 ## 6. 驗證三種語言的專案骨架
 
-在 repository 根目錄執行：
+在 repository 根目錄使用統一驗證入口：
+
+```bash
+make verify
+```
+
+此命令會依序執行 C、Go、Rust 的驗證。也可以分別執行底層命令以了解
+每個語言工具鏈的行為：
 
 ```bash
 make -C c
