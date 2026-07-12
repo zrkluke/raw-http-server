@@ -1,2 +1,5 @@
 # Build metadata should not dominate the educational language comparison.
 c/Makefile linguist-detectable=false
+
+# Shared fixtures are byte-exact protocol data on every platform.
+testdata/** -text

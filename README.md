@@ -80,7 +80,8 @@ raw-http-server/
 └── testdata/
 ```
 
-`testdata/` 會在共用驗收資料建立後加入。
+`testdata/` 保存三種語言共用且 byte-exact 的驗收資料；格式與命名慣例請
+參考 [`testdata/README.md`](testdata/README.md)。
 
 本專案依據適用的 HTTP/1.1 RFC 實作與驗證課程範圍內的協定行為，
 但不以涵蓋完整 RFC、production-ready 或高效能 HTTP Server 為目標；
