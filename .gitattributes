@@ -1,5 +1,6 @@
 # Repository text files are verified from WSL and should keep LF endings.
 .gitattributes text eol=lf
+.gitignore text eol=lf
 *.md text eol=lf
 
 # Build metadata should not dominate the educational language comparison.

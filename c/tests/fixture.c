@@ -1,5 +1,7 @@
 #include "fixture.h"
 
+#include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -62,6 +64,82 @@ int fixture_load(const char *root, const char *group, const char *name,
         fixture_free(fixture);
         return -1;
     }
+    return 0;
+}
+
+int fixture_load_chunk_sizes(const char *root, const char *group,
+                             const char *name, size_t input_length,
+                             size_t **chunks, size_t *chunk_count) {
+    char path[1024];
+    unsigned char *data = NULL;
+    size_t data_length = 0;
+    size_t *sizes = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    size_t total = 0;
+    size_t index = 0;
+
+    *chunks = NULL;
+    *chunk_count = 0;
+    if (snprintf(path, sizeof(path), "%s/%s/%s/chunks.txt", root, group,
+                 name) >= (int)sizeof(path) ||
+        read_file(path, &data, &data_length) != 0) {
+        return -1;
+    }
+
+    while (index < data_length) {
+        size_t size = 0;
+        size_t *grown;
+
+        while (index < data_length && isspace(data[index])) {
+            index++;
+        }
+        if (index == data_length) {
+            break;
+        }
+        if (!isdigit(data[index])) {
+            free(data);
+            free(sizes);
+            return -1;
+        }
+        while (index < data_length && isdigit(data[index])) {
+            unsigned char digit = (unsigned char)(data[index] - '0');
+
+            if (size > (SIZE_MAX - digit) / 10) {
+                free(data);
+                free(sizes);
+                return -1;
+            }
+            size = size * 10 + digit;
+            index++;
+        }
+        if (size == 0 || total > SIZE_MAX - size) {
+            free(data);
+            free(sizes);
+            return -1;
+        }
+        if (count == capacity) {
+            capacity = capacity == 0 ? 4 : capacity * 2;
+            grown = realloc(sizes, capacity * sizeof(*sizes));
+            if (grown == NULL) {
+                free(data);
+                free(sizes);
+                return -1;
+            }
+            sizes = grown;
+        }
+        sizes[count++] = size;
+        total += size;
+    }
+
+    free(data);
+    if (count == 0 || total != input_length) {
+        free(sizes);
+        return -1;
+    }
+
+    *chunks = sizes;
+    *chunk_count = count;
     return 0;
 }
 

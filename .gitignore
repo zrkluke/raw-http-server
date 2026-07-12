@@ -20,6 +20,7 @@ c/*.exe
 c/*.out
 c/raw-http-server-c
 c/fixture-test
+c/*-test
 
 # Go build and test artifacts
 go/bin/
