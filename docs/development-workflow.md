@@ -74,8 +74,25 @@ milestone 只有在下列條件全部成立時才算完成：
 - `make verify` 在 WSL 成功，且所有先前 milestone 的測試仍然通過。
 - C sanitizer、Go static checks、Rust format／Clippy 等品質 gate 通過。
 - function-to-function 比較、刻意差異與 protocol 簡化已有文件記錄。
+- step README 聚焦當前階段的目標、成果、驗收方式、重要檔案、刻意不做的
+  範圍與版本導覽，不重複 `main` 的完整專案總覽。
 - OpenSpec task checkbox 已反映實際狀態。
 - 以上條件確認後，才可建立 immutable milestone tag。
+
+## Step README 規則
+
+`main` README 保存專案層級的學習目標、實作界線、九個里程碑與完整導航。
+每個 `step-*` branch 的 README 則以該階段為主，至少包含：
+
+- 本階段目標與完成內容。
+- 為什麼需要這個階段。
+- 可重現的驗收命令與成功條件。
+- 建議讀者查看的重要檔案及其責任。
+- 本階段刻意尚未實作的行為。
+- 前一狀態、目前 branch、immutable tag 與下一步。
+
+共用的環境安裝、TDD 與版本規則留在 `docs/`，step README 只提供連結，
+避免讀者切換 branch 時反覆看到相同的專案總覽。
 
 ## Branch 規則
 

@@ -5,6 +5,7 @@
 - [x] 1.3 Create the shared `testdata/` conventions and language-native fixture loaders
 - [x] 1.4 Configure strict C warnings and sanitizer checks, Go tests, and Rust tests plus lints
 - [x] 1.5 Document the Red-Green-Refactor, cumulative regression, Definition of Done, branch, and immutable tag conventions
+- [x] 1.6 Rewrite the Foundation README around its purpose, acceptance, important files, exclusions, and version navigation, and establish that focused format for later steps
 
 ## 2. Milestone 1 - HTTP Streams
 

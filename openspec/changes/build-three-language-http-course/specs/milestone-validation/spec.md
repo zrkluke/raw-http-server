@@ -55,3 +55,10 @@ Each completed milestone SHALL have an immutable Git tag that identifies the exa
 #### Scenario: Reference code from an article
 - **WHEN** documentation links to a completed milestone
 - **THEN** it can link to the immutable tag rather than relying solely on a mutable branch
+
+### Requirement: Milestone-focused branch documentation
+Each milestone branch README SHALL prioritize the current step's purpose, completed behavior, acceptance method, important files, deliberate exclusions, and version navigation instead of repeating the full project overview from `main`.
+
+#### Scenario: Open a milestone branch on GitHub
+- **WHEN** a learner reads the README on a completed step branch
+- **THEN** the learner can identify what changed in that step, how to verify it, and which files to inspect before following links to shared project documentation

@@ -57,6 +57,18 @@ Protocol bytes and expected results live in a language-neutral `testdata/` area.
 
 Milestones are cumulative. A milestone ref is created only after its Definition of Done passes. Immutable tags are the canonical article references; optional branches may remain as convenient browsing pointers. The final `main` state contains the completed series.
 
+### Milestone-focused README snapshots
+
+The `main` README owns the stable project overview, learning goals, implementation
+boundary, complete milestone map, and final navigation. Each `step-*` branch instead
+leads with the current step's purpose, completed behavior, acceptance command,
+important files, deliberate exclusions, and adjacent refs. Shared setup and workflow
+details remain in `docs/` and are linked rather than copied into every milestone.
+
+Alternative considered: carry the complete `main` README forward and append milestone
+status. Rejected because repeated project-wide sections hide the information a learner
+needs when switching branches to study one implementation stage.
+
 ## Risks / Trade-offs
 
 - **[Common contracts force unnatural APIs]** → Compare responsibility and observable behavior, not identical signatures or data layouts.
