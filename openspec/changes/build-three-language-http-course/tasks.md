@@ -19,7 +19,7 @@
 
 - [x] 3.1 Add a failing black-box acceptance test for listen, connect, accept, byte transfer, and connection cleanup
 - [x] 3.2 Implement and unit-test the TCP listener path in Go
-- [ ] 3.3 Implement and unit-test the equivalent POSIX TCP listener path in C under WSL
+- [x] 3.3 Implement and unit-test the equivalent POSIX TCP listener path in C under WSL
 - [ ] 3.4 Implement and unit-test the equivalent TCP listener path in Rust
 - [ ] 3.5 Run unified regression and integration checks, document the comparison, and create the verified milestone ref
 
