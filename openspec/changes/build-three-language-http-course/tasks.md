@@ -4,7 +4,7 @@
 - [x] 1.2 Add a WSL-compatible unified command that builds and runs native tests for all three languages
 - [x] 1.3 Create the shared `testdata/` conventions and language-native fixture loaders
 - [x] 1.4 Configure strict C warnings and sanitizer checks, Go tests, and Rust tests plus lints
-- [ ] 1.5 Document the Red-Green-Refactor, cumulative regression, Definition of Done, branch, and immutable tag conventions
+- [x] 1.5 Document the Red-Green-Refactor, cumulative regression, Definition of Done, branch, and immutable tag conventions
 
 ## 2. Milestone 1 - HTTP Streams
 
