@@ -39,9 +39,24 @@ Each implementation SHALL listen on a configurable local TCP address, accept a c
 ### Requirement: Milestone 3 Requests
 Each implementation SHALL represent incremental request parsing with distinguishable incomplete, complete, and invalid outcomes.
 
+For this milestone, "complete" means that the request head has a non-empty
+first line and is terminated by an empty CRLF-delimited line. Request-line
+semantics, header syntax, and message-body framing are deliberately deferred
+to later milestones. The course parser SHALL require CRLF line endings; a bare
+LF, or a bare CR once its following non-LF byte is available, is invalid. A CR
+at the end of currently available input remains incomplete.
+
 #### Scenario: Partial request remains incomplete
 - **WHEN** the available bytes do not contain all data required by the current parser state
 - **THEN** the parser reports incomplete without treating the input as invalid or discarding required bytes
+
+#### Scenario: Request head is complete
+- **WHEN** a non-empty first line and the terminating empty CRLF line have been received
+- **THEN** the parser reports complete without yet interpreting the request line or header fields
+
+#### Scenario: Invalid line ending
+- **WHEN** a bare LF or a bare CR followed by a non-LF byte is received
+- **THEN** the parser reports invalid
 
 ### Requirement: Milestone 4 Request Lines
 Each implementation SHALL parse and validate the request method, request target, and HTTP version from a CRLF-terminated request line.

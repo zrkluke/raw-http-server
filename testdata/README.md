@@ -39,3 +39,21 @@ The initial cases exercise the same logical line with these partitions:
 
 The repository marks `testdata/**` as `-text` in `.gitattributes`, preventing
 Git from changing line endings on Windows.
+
+## Requests metadata
+
+Fixtures under `testdata/requests/` use the same byte files and `chunks.txt`
+metadata. Their `expected.bin` contains one ASCII state name followed by LF:
+`incomplete`, `complete`, or `invalid`.
+
+At this stage, `complete` means only that the request head ends with an empty
+CRLF-delimited line. Request-line validation, header validation, and body
+framing deliberately belong to later steps. The course parser uses strict
+CRLF: a bare LF, or a confirmed bare CR, is invalid; a final CR is still
+incomplete because the next chunk might contain LF.
+
+The `complete-head` cases deliberately provide the same complete request head
+under multiple partitions: the existing CRLF and field-boundary case,
+`complete-head-whole` as one read, `complete-head-one-byte` as one byte per
+read, and `complete-head-fixed` in fixed-size reads. Every case must produce
+the same `complete` result.
