@@ -29,7 +29,7 @@
 - [x] 4.2 Implement and unit-test the request state machine and result representation in Go
 - [x] 4.3 Implement and unit-test the equivalent request state machine and result representation in C
 - [x] 4.4 Implement and unit-test the equivalent request state machine and result representation in Rust
-- [ ] 4.5 Run unified regression checks, document the comparison, and create the verified milestone ref
+- [x] 4.5 Run unified regression checks, document the comparison, and create the verified milestone ref
 
 ## 5. Milestone 4 - Request Lines
 
