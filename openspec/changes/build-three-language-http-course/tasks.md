@@ -25,10 +25,10 @@
 
 ## 4. Milestone 3 - Requests
 
-- [ ] 4.1 Add failing shared cases for incomplete, complete, and invalid incremental request states
-- [ ] 4.2 Implement and unit-test the request state machine and result representation in Go
-- [ ] 4.3 Implement and unit-test the equivalent request state machine and result representation in C
-- [ ] 4.4 Implement and unit-test the equivalent request state machine and result representation in Rust
+- [x] 4.1 Add failing shared cases for incomplete, complete, and invalid incremental request states
+- [x] 4.2 Implement and unit-test the request state machine and result representation in Go
+- [x] 4.3 Implement and unit-test the equivalent request state machine and result representation in C
+- [x] 4.4 Implement and unit-test the equivalent request state machine and result representation in Rust
 - [ ] 4.5 Run unified regression checks, document the comparison, and create the verified milestone ref
 
 ## 5. Milestone 4 - Request Lines
