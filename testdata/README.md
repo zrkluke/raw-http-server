@@ -69,3 +69,15 @@ For complete sections, `expected.bin` begins with `complete` and then has one
 `lowercase-name|trimmed-value` line per parsed header. `incomplete` and
 `invalid` are represented by their state name alone. The format is an
 acceptance-test serialization, not an HTTP wire format.
+
+## HTTP Body metadata
+
+Fixtures under `testdata/bodies/` begin immediately after the terminating empty
+header line. `content-length.txt` is test metadata describing the already parsed
+`Content-Length` field: a decimal value is present, `absent` means the field was
+not supplied, and any other value is invalid for this milestone.
+
+`expected.bin` is the body accumulated by the parser, while `remaining.bin` is
+the input that must remain unconsumed after the parser reaches its terminal
+state. `state.txt` contains `incomplete`, `complete`, or `invalid`. This makes
+the over-delivered case observable without treating the body as text.

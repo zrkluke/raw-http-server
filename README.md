@@ -1,33 +1,27 @@
-# Step 5：HTTP Headers
+# Step 6：HTTP Body
 
-這個分支建立在 Step 1 的 CRLF line reader、Step 2 的 TCP listener、Step 3 的
-request-head state machine 與 Step 4 的 request-line parser 之上。C、Go、Rust
-現在都能從第一個 header field 開始，逐步讀取 HTTP header section，直到空白的
-CRLF 行結束。
+這一步讓 C、Go、Rust 在已知 `Content-Length` 後，從 TCP byte stream
+逐步累積 HTTP request body。parser 只取走宣告長度內的 bytes，並保留多出
+的 bytes，讓後續功能可以繼續處理它們。
 
-本步不處理 `Content-Length` 或 body；它只將每一個完整 header line 拆成名稱與值，
-並保留 TCP bytes 可能分段到達的事實。
+這不是把 body 當成文字，也不會假設一次 TCP read 就剛好拿到完整 body。
 
 ## 本步完成的行為
 
-共享 fixtures [`testdata/headers/`](testdata/headers) 以原始 bytes 與不同的
-`chunks.txt` 切分，驗證三種語言在下列情況得到相同結果：
+共享 fixture [`testdata/bodies/`](testdata/bodies) 驗證五種情況：
 
-| 類型 | 代表案例 | 預期行為 |
-| --- | --- | --- |
-| 正常欄位 | `Host: example.com` | 名稱正規化為 `host`，值為 `example.com` |
-| 不分大小寫 | `CONTENT-TYPE: text/plain` | 名稱轉為 ASCII lowercase |
-| optional whitespace | `X-Note: \t hello \t` | 只去除值兩端的 SP／HTAB |
-| 重複名稱 | 兩個 `Set-Cookie` | 依輸入順序保留兩個欄位 |
-| 空白 section | 直接收到 `\r\n` | 完成、沒有 header field |
-| TCP 分段 | 名稱、值、CRLF 分屬不同 chunks | 與完整輸入相同 |
-| 格式錯誤 | 缺少 colon、leading whitespace、bare LF／CR | `invalid` |
+| 情況 | `Content-Length` | 輸入 bytes | 預期結果 |
+| --- | --- | --- | --- |
+| 缺少欄位 | absent | `after\n` | complete；body 為空，全部保留為 remaining |
+| 完整 body | `6` | `hello\n` | complete；累積六個 bytes |
+| 尚未收齊 | `6` | `hel\n` | incomplete；保留已收到的四個 bytes |
+| 非法欄位 | `not-a-number` | `hello\n` | invalid；不消耗任何 bytes |
+| 收到過多 | `4` | `cat\nnext\n` | complete；body 是 `cat\n`，`next\n` 保留 |
 
-一個真正的空白行是剛好 `\r\n`：前面的 CRLF 已完成上一個 header field，下一個
-CRLF 則告訴 HTTP parser「header section 到這裡為止」。只有 `\r` 仍是 incomplete；
-收到非 `\n` 的下一個 byte 後才可確認為 invalid。
+`chunks.txt` 仍描述 TCP read 的分段方式。相同的 raw bytes 即使在不同
+chunk 邊界到達，最終 body、state 與 remaining bytes 都必須一致。
 
-## 驗收方式
+## 驗收
 
 在 WSL 的 repository 根目錄執行：
 
@@ -35,53 +29,55 @@ CRLF 則告訴 HTTP parser「header section 到這裡為止」。只有 `\r` 仍
 make verify
 ```
 
-本次驗收累積涵蓋 Step 1 到 Step 5：
+這會累積驗證 Step 1 到 Step 6：
 
-- C：strict warnings、native unit／shared acceptance tests、AddressSanitizer 與
-  UndefinedBehaviorSanitizer。
-- Go：`gofmt`、`go vet`、native unit tests 與 shared acceptance test。
-- Rust：`cargo fmt --check`、Clippy、native unit tests 與 shared acceptance test。
+- C：strict warnings、native unit/shared acceptance tests、ASan 與 UBSan
+- Go：`gofmt`、`go vet`、native unit/shared acceptance tests
+- Rust：`cargo fmt --check`、Clippy、native unit/shared acceptance tests
 
 ## Function 對照
 
 | 責任 | C | Go | Rust |
 | --- | --- | --- | --- |
-| 建立 parser | [`header_parser_init`](c/header_parser.c) | [`NewHeaderParser`](go/internal/httprequest/header.go) | [`HeaderParser::new`](rust/src/lib.rs) |
-| 餵入 TCP bytes | [`header_parser_feed`](c/header_parser.c) | [`HeaderParser.Feed`](go/internal/httprequest/header.go) | [`HeaderParser::feed`](rust/src/lib.rs) |
-| 取得 parser 狀態 | [`header_parser_state`](c/header_parser.c) | `HeaderParser.State` | [`HeaderParser::state`](rust/src/lib.rs) |
-| 保存已完成欄位 | `struct header_field` | `Header` | `Header` |
-| 釋放／結束生命週期 | [`header_parser_free`](c/header_parser.c) | Go GC | Rust RAII |
+| 建立 body parser | [`body_parser_init`](c/body_parser.c) | [`NewBodyParser`](go/internal/httprequest/body.go) | [`BodyParser::new`](rust/src/lib.rs) |
+| 餵入 TCP bytes | [`body_parser_feed`](c/body_parser.c) | [`BodyParser.Feed`](go/internal/httprequest/body.go) | [`BodyParser::feed`](rust/src/lib.rs) |
+| 取得 parser state | [`body_parser_state`](c/body_parser.c) | `BodyParser.State` | [`BodyParser::state`](rust/src/lib.rs) |
+| 取得已累積 body | [`body_parser_body`](c/body_parser.c) | `BodyParser.Body` | [`BodyParser::body`](rust/src/lib.rs) |
+| 取得未消耗 bytes | [`body_parser_remaining`](c/body_parser.c) | `BodyParser.Remaining` | [`BodyParser::remaining`](rust/src/lib.rs) |
+| 結束生命週期 | [`body_parser_free`](c/body_parser.c) | Go GC | Rust RAII |
 
-C 的 parser 自己配置可成長的 line buffer 與 field array，並要求呼叫端最後呼叫
-`header_parser_free`。Go 使用 slice 與 `Header` struct；失敗以 `ParserInvalid` 表達。
-Rust 讓 `Vec<u8>` 與 `Vec<Header>` 擁有資料，離開 scope 時由 RAII 釋放，並以
-`HeaderState` enum 表達 incomplete、complete、invalid。三者都保留重複欄位順序，
-不把 header 視為 map。
+C 的 `struct body_parser` 明確管理 body 與 remaining 的配置容量，並由呼叫端
+執行 `body_parser_free`。Go 使用兩個可成長的 `[]byte`，以 `State` 與
+copy-on-read slice 表示結果。Rust 則以 `Vec<u8>` 擁有兩段資料，`BodyState`
+表達狀態，離開 scope 時由 RAII 自動釋放記憶體。
 
 ## 重要檔案
 
 | 檔案 | 用途 |
 | --- | --- |
-| [`testdata/headers/`](testdata/headers) | 共用原始 bytes、預期輸出與 chunk 分段 |
-| [`go/internal/httprequest/header.go`](go/internal/httprequest/header.go) | Go 的 incremental header parser |
-| [`go/internal/httprequest/header_acceptance_test.go`](go/internal/httprequest/header_acceptance_test.go) | Go 讀取 shared fixtures |
-| [`c/header_parser.h`](c/header_parser.h) | C 的 parser、state 與 field 契約 |
-| [`c/header_parser.c`](c/header_parser.c) | C 的 buffer、欄位配置與 cleanup 實作 |
-| [`c/tests/header_parser_acceptance_test.c`](c/tests/header_parser_acceptance_test.c) | C 讀取 shared fixtures |
-| [`rust/src/lib.rs`](rust/src/lib.rs) | Rust 的 `HeaderParser`、`HeaderState` 與單元測試 |
-| [`rust/tests/header_parser_acceptance.rs`](rust/tests/header_parser_acceptance.rs) | Rust 讀取 shared fixtures |
+| [`testdata/bodies/`](testdata/bodies) | 共用 body bytes、state、remaining 與 chunk fixture |
+| [`testdata/README.md`](testdata/README.md) | body fixture metadata 的精確定義 |
+| [`go/internal/httprequest/body.go`](go/internal/httprequest/body.go) | Go 的 `Content-Length` body parser |
+| [`go/internal/httprequest/body_acceptance_test.go`](go/internal/httprequest/body_acceptance_test.go) | Go 讀取 shared fixtures |
+| [`c/body_parser.h`](c/body_parser.h) | C 的 state、buffer 與 ownership 契約 |
+| [`c/body_parser.c`](c/body_parser.c) | C 的 bytes 累積與 remaining 管理 |
+| [`c/tests/body_parser_acceptance_test.c`](c/tests/body_parser_acceptance_test.c) | C 讀取 shared fixtures |
+| [`rust/src/lib.rs`](rust/src/lib.rs) | Rust 的 `BodyParser`、`BodyState` 與單元測試 |
+| [`rust/tests/body_parser_acceptance.rs`](rust/tests/body_parser_acceptance.rs) | Rust 讀取 shared fixtures |
 
 ## 本步刻意不做
 
-- `Content-Length`、request body、body framing 或 header-specific semantics。
-- 完整 RFC field-name grammar、header size limits、trailers 或 obs-fold 相容模式。
-- 多 client、keep-alive、timeout policy、TLS 或 production hardening。
-- `net/http`、HTTP parser、web framework、async runtime 或第三方實作依賴。
+- 從 parsed headers 自動找出或驗證 `Content-Length`；本步以 fixture metadata
+  模擬已取得的欄位值。
+- `Transfer-Encoding: chunked`、trailers 或其他 body framing。
+- 把 body 解碼成 UTF-8、JSON、form data，或交給 application framework。
+- keep-alive、多個 request 的 pipeline、response 寫回與 production hardening。
 
 ## 版本導覽
 
-- 前一個 immutable snapshot：[Step 4 · Request Lines](https://github.com/zrkluke/raw-http-server/tree/step-4-request-lines-v1)
-- 這是開發分支 `step-5-headers`；通過文件 review、commit 與 tag 後，會建立
-  Step 5 的 immutable snapshot。
-- 專案總覽與完整學習地圖：[main README](https://github.com/zrkluke/raw-http-server/tree/main)
-- 開發環境與流程：[WSL setup](docs/development-setup.md) · [development workflow](docs/development-workflow.md)
+- 前一步固定快照：[Step 5：HTTP Headers](https://github.com/zrkluke/raw-http-server/tree/step-5-headers-v1)
+- 目前開發分支：`step-6-body`
+- 本步通過文件 review、commit 與 tag 後，會建立 immutable snapshot。
+- 完整學習地圖請看 [main README](https://github.com/zrkluke/raw-http-server/tree/main)。
+- WSL 與工作流程請看 [development setup](docs/development-setup.md) 與
+  [development workflow](docs/development-workflow.md)。

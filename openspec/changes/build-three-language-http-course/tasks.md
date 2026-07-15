@@ -49,11 +49,11 @@
 
 ## 7. Milestone 6 - HTTP Body
 
-- [ ] 7.1 Add failing shared fixtures for absent, complete, partial, invalid-length, and over-delivered bodies
-- [ ] 7.2 Implement and unit-test `Content-Length` body handling in Go
-- [ ] 7.3 Implement and unit-test equivalent `Content-Length` body handling in C
-- [ ] 7.4 Implement and unit-test equivalent `Content-Length` body handling in Rust
-- [ ] 7.5 Run unified regression checks, document the comparison, and create the verified milestone ref
+- [x] 7.1 Add failing shared fixtures for absent, complete, partial, invalid-length, and over-delivered bodies
+- [x] 7.2 Implement and unit-test `Content-Length` body handling in Go
+- [x] 7.3 Implement and unit-test equivalent `Content-Length` body handling in C
+- [x] 7.4 Implement and unit-test equivalent `Content-Length` body handling in Rust
+- [x] 7.5 Run unified regression checks, document the comparison, and create the verified milestone ref
 
 ## 8. Milestone 7 - HTTP Responses
 
