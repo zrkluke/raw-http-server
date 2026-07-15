@@ -33,10 +33,10 @@
 
 ## 5. Milestone 4 - Request Lines
 
-- [ ] 5.1 Add failing table-driven fixtures for valid lines, malformed fields, separators, versions, and chunk partitions
-- [ ] 5.2 Implement and unit-test request-line parsing and validation in Go
-- [ ] 5.3 Implement and unit-test equivalent request-line parsing and validation in C
-- [ ] 5.4 Implement and unit-test equivalent request-line parsing and validation in Rust
+- [x] 5.1 Add failing table-driven fixtures for valid lines, malformed fields, separators, versions, and chunk partitions
+- [x] 5.2 Implement and unit-test request-line parsing and validation in Go
+- [x] 5.3 Implement and unit-test equivalent request-line parsing and validation in C
+- [x] 5.4 Implement and unit-test equivalent request-line parsing and validation in Rust
 - [ ] 5.5 Run unified regression checks, document the comparison, and create the verified milestone ref
 
 ## 6. Milestone 5 - HTTP Headers

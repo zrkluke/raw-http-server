@@ -61,6 +61,13 @@ at the end of currently available input remains incomplete.
 ### Requirement: Milestone 4 Request Lines
 Each implementation SHALL parse and validate the request method, request target, and HTTP version from a CRLF-terminated request line.
 
+For this learning milestone, a request line consists of exactly three non-empty
+byte fields separated by single SP bytes: method, request target, and HTTP
+version. The implementation SHALL accept only the case-sensitive version
+`HTTP/1.1`. It SHALL reject leading, trailing, repeated, or tab separators.
+It SHALL not yet validate the individual request-target forms or implement the
+full HTTP method-token grammar; those protocol details are deliberately deferred.
+
 #### Scenario: Valid request line
 - **WHEN** the parser receives `GET /example HTTP/1.1` followed by CRLF
 - **THEN** it returns method `GET`, target `/example`, and version `HTTP/1.1`
@@ -68,6 +75,10 @@ Each implementation SHALL parse and validate the request method, request target,
 #### Scenario: Malformed request line
 - **WHEN** the request line has missing fields, invalid separators, or an unsupported version
 - **THEN** the parser reports an invalid request-line outcome
+
+#### Scenario: Request line crosses TCP read boundaries
+- **WHEN** the same valid CRLF-terminated request line is divided at field boundaries or within its final CRLF
+- **THEN** parsing produces the same method, target, and version as when all bytes arrive at once
 
 ### Requirement: Milestone 5 HTTP Headers
 Each implementation SHALL incrementally parse header field names and values until the terminating empty line and SHALL treat field names case-insensitively.
