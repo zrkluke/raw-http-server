@@ -37,7 +37,7 @@
 - [x] 5.2 Implement and unit-test request-line parsing and validation in Go
 - [x] 5.3 Implement and unit-test equivalent request-line parsing and validation in C
 - [x] 5.4 Implement and unit-test equivalent request-line parsing and validation in Rust
-- [ ] 5.5 Run unified regression checks, document the comparison, and create the verified milestone ref
+- [x] 5.5 Run unified regression checks, document the comparison, and create the verified milestone ref
 
 ## 6. Milestone 5 - HTTP Headers
 
