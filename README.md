@@ -1,29 +1,31 @@
-# Step 4：HTTP Request Lines
+# Step 5：HTTP Headers
 
-這個分支建立在 Step 1 的 CRLF line reader、Step 2 的 TCP listener 與
-Step 3 的 request-head state machine 之上。C、Go、Rust 現在都能將一條完整的
-HTTP request line 拆成 `method`、`target` 與 `HTTP version`，或明確判定它無效。
+這個分支建立在 Step 1 的 CRLF line reader、Step 2 的 TCP listener、Step 3 的
+request-head state machine 與 Step 4 的 request-line parser 之上。C、Go、Rust
+現在都能從第一個 header field 開始，逐步讀取 HTTP header section，直到空白的
+CRLF 行結束。
 
-本步處理的是 HTTP/1.1 request line 的最小學習契約：恰好三個非空 byte 欄位，
-欄位之間只能有一個 SP（空白），且 version 必須完全等於 `HTTP/1.1`。這讓後續
-header parser 可以接收已分好的第一行，而不用重新處理 TCP chunk 邊界。
+本步不處理 `Content-Length` 或 body；它只將每一個完整 header line 拆成名稱與值，
+並保留 TCP bytes 可能分段到達的事實。
 
 ## 本步完成的行為
 
-共享 fixtures [`testdata/request-lines/`](testdata/request-lines) 以原始 bytes 與
-不同的 `chunks.txt` 切分，驗證三種語言在下列情況得到相同結果：
+共享 fixtures [`testdata/headers/`](testdata/headers) 以原始 bytes 與不同的
+`chunks.txt` 切分，驗證三種語言在下列情況得到相同結果：
 
-| 類型 | 代表案例 | 預期結果 |
+| 類型 | 代表案例 | 預期行為 |
 | --- | --- | --- |
-| 有效 request line | `GET /example HTTP/1.1` | `GET|/example|HTTP/1.1` |
-| target 帶 query | `GET /search?q=rust HTTP/1.1` | 保留完整 target |
-| TCP 分段 | 最終 CRLF、欄位邊界、逐 byte、固定大小切分 | 與完整輸入相同 |
-| 格式錯誤 | 缺欄位、前後／重複空白、tab | `invalid` |
-| 不支援 version | `HTTP/1.0` | `invalid` |
+| 正常欄位 | `Host: example.com` | 名稱正規化為 `host`，值為 `example.com` |
+| 不分大小寫 | `CONTENT-TYPE: text/plain` | 名稱轉為 ASCII lowercase |
+| optional whitespace | `X-Note: \t hello \t` | 只去除值兩端的 SP／HTAB |
+| 重複名稱 | 兩個 `Set-Cookie` | 依輸入順序保留兩個欄位 |
+| 空白 section | 直接收到 `\r\n` | 完成、沒有 header field |
+| TCP 分段 | 名稱、值、CRLF 分屬不同 chunks | 與完整輸入相同 |
+| 格式錯誤 | 缺少 colon、leading whitespace、bare LF／CR | `invalid` |
 
-`LineReader` 先依 CRLF 從 TCP bytes 取出不含 terminator 的一行，request-line
-parser 才檢查欄位。這兩層責任分開，才能正確處理 `\r` 與 `\n` 分屬不同 read 的
-情況。
+一個真正的空白行是剛好 `\r\n`：前面的 CRLF 已完成上一個 header field，下一個
+CRLF 則告訴 HTTP parser「header section 到這裡為止」。只有 `\r` 仍是 incomplete；
+收到非 `\n` 的下一個 byte 後才可確認為 invalid。
 
 ## 驗收方式
 
@@ -33,7 +35,7 @@ parser 才檢查欄位。這兩層責任分開，才能正確處理 `\r` 與 `\n
 make verify
 ```
 
-本次驗收已涵蓋 Step 1 到 Step 4 的累積回歸：
+本次驗收累積涵蓋 Step 1 到 Step 5：
 
 - C：strict warnings、native unit／shared acceptance tests、AddressSanitizer 與
   UndefinedBehaviorSanitizer。
@@ -44,40 +46,42 @@ make verify
 
 | 責任 | C | Go | Rust |
 | --- | --- | --- | --- |
-| 解析一條 request line | [`request_line_parse`](c/request_line.c) | [`ParseRequestLine`](go/internal/httprequest/request_line.go) | [`RequestLine::parse`](rust/src/lib.rs) |
-| 表達有效結果 | `struct request_line` 的 pointer + length slices | `RequestLine` 的 string fields 與 `Valid` | `RequestLine` 的私有 `Vec<u8>` 欄位 |
-| 表達無效結果 | `REQUEST_LINE_INVALID` | 零值 `RequestLine{}`，`Valid == false` | `Err(RequestLineError::Invalid)` |
-| 轉為 fixture 輸出 | acceptance test 組合 slices | `RequestLine.String()` | `Display for RequestLine` |
+| 建立 parser | [`header_parser_init`](c/header_parser.c) | [`NewHeaderParser`](go/internal/httprequest/header.go) | [`HeaderParser::new`](rust/src/lib.rs) |
+| 餵入 TCP bytes | [`header_parser_feed`](c/header_parser.c) | [`HeaderParser.Feed`](go/internal/httprequest/header.go) | [`HeaderParser::feed`](rust/src/lib.rs) |
+| 取得 parser 狀態 | [`header_parser_state`](c/header_parser.c) | `HeaderParser.State` | [`HeaderParser::state`](rust/src/lib.rs) |
+| 保存已完成欄位 | `struct header_field` | `Header` | `Header` |
+| 釋放／結束生命週期 | [`header_parser_free`](c/header_parser.c) | Go GC | Rust RAII |
 
-C 的結果直接借用輸入 buffer，因此呼叫端必須確保原始 bytes 還有效；它不額外配置
-記憶體。Go 將三個 byte slice 轉成 `string`，以 `Valid` 表示是否可用。Rust 則把
-欄位複製到受 ownership 管理的 `Vec<u8>`，以 `Result` 強迫呼叫端處理失敗分支。
-三者的可觀察輸出相同，但記憶體與錯誤處理方式不同。
+C 的 parser 自己配置可成長的 line buffer 與 field array，並要求呼叫端最後呼叫
+`header_parser_free`。Go 使用 slice 與 `Header` struct；失敗以 `ParserInvalid` 表達。
+Rust 讓 `Vec<u8>` 與 `Vec<Header>` 擁有資料，離開 scope 時由 RAII 釋放，並以
+`HeaderState` enum 表達 incomplete、complete、invalid。三者都保留重複欄位順序，
+不把 header 視為 map。
 
 ## 重要檔案
 
 | 檔案 | 用途 |
 | --- | --- |
-| [`testdata/request-lines/`](testdata/request-lines) | 共用原始 bytes、預期輸出與 chunk 分段 |
-| [`go/internal/httprequest/request_line.go`](go/internal/httprequest/request_line.go) | Go 的 request-line parser |
-| [`go/internal/httprequest/request_line_acceptance_test.go`](go/internal/httprequest/request_line_acceptance_test.go) | Go 讀取 shared fixtures |
-| [`c/request_line.h`](c/request_line.h) | C 的結果 struct 與 parser 契約 |
-| [`c/request_line.c`](c/request_line.c) | C 的 pointer/length slice 實作 |
-| [`c/tests/request_line_acceptance_test.c`](c/tests/request_line_acceptance_test.c) | C 讀取 shared fixtures |
-| [`rust/src/lib.rs`](rust/src/lib.rs) | Rust 的 `RequestLine`、`RequestLineError` 與單元測試 |
-| [`rust/tests/request_line_acceptance.rs`](rust/tests/request_line_acceptance.rs) | Rust 讀取 shared fixtures |
+| [`testdata/headers/`](testdata/headers) | 共用原始 bytes、預期輸出與 chunk 分段 |
+| [`go/internal/httprequest/header.go`](go/internal/httprequest/header.go) | Go 的 incremental header parser |
+| [`go/internal/httprequest/header_acceptance_test.go`](go/internal/httprequest/header_acceptance_test.go) | Go 讀取 shared fixtures |
+| [`c/header_parser.h`](c/header_parser.h) | C 的 parser、state 與 field 契約 |
+| [`c/header_parser.c`](c/header_parser.c) | C 的 buffer、欄位配置與 cleanup 實作 |
+| [`c/tests/header_parser_acceptance_test.c`](c/tests/header_parser_acceptance_test.c) | C 讀取 shared fixtures |
+| [`rust/src/lib.rs`](rust/src/lib.rs) | Rust 的 `HeaderParser`、`HeaderState` 與單元測試 |
+| [`rust/tests/header_parser_acceptance.rs`](rust/tests/header_parser_acceptance.rs) | Rust 讀取 shared fixtures |
 
 ## 本步刻意不做
 
-- 完整 HTTP method token grammar，或各種 request-target form 的語意驗證。
-- header 名稱／值解析、case-insensitive 規則、body framing 與 `Content-Length`。
+- `Content-Length`、request body、body framing 或 header-specific semantics。
+- 完整 RFC field-name grammar、header size limits、trailers 或 obs-fold 相容模式。
 - 多 client、keep-alive、timeout policy、TLS 或 production hardening。
 - `net/http`、HTTP parser、web framework、async runtime 或第三方實作依賴。
 
 ## 版本導覽
 
-- 前一個 immutable snapshot：[Step 3 · Requests](https://github.com/zrkluke/raw-http-server/tree/step-3-requests-v1)
-- 這是開發分支 `step-4-request-lines`；通過文件 review、commit 與 tag 後，會建立
-  Step 4 的 immutable snapshot。
+- 前一個 immutable snapshot：[Step 4 · Request Lines](https://github.com/zrkluke/raw-http-server/tree/step-4-request-lines-v1)
+- 這是開發分支 `step-5-headers`；通過文件 review、commit 與 tag 後，會建立
+  Step 5 的 immutable snapshot。
 - 專案總覽與完整學習地圖：[main README](https://github.com/zrkluke/raw-http-server/tree/main)
 - 開發環境與流程：[WSL setup](docs/development-setup.md) · [development workflow](docs/development-workflow.md)
