@@ -45,7 +45,7 @@
 - [x] 6.2 Implement and unit-test incremental header parsing in Go
 - [x] 6.3 Implement and unit-test equivalent incremental header parsing in C
 - [x] 6.4 Implement and unit-test equivalent incremental header parsing in Rust
-- [ ] 6.5 Run unified regression checks, document the comparison, and create the verified milestone ref
+- [x] 6.5 Run unified regression checks, document the comparison, and create the verified milestone ref
 
 ## 7. Milestone 6 - HTTP Body
 
