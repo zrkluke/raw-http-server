@@ -57,3 +57,15 @@ under multiple partitions: the existing CRLF and field-boundary case,
 `complete-head-whole` as one read, `complete-head-one-byte` as one byte per
 read, and `complete-head-fixed` in fixed-size reads. Every case must produce
 the same `complete` result.
+
+## HTTP Headers metadata
+
+Fixtures under `testdata/headers/` represent only the header-section bytes that
+follow a request line; `input.bin` therefore starts at the first header field
+or the terminating empty CRLF line. Their `chunks.txt` files use the same
+positive decimal-byte-count convention as HTTP Streams.
+
+For complete sections, `expected.bin` begins with `complete` and then has one
+`lowercase-name|trimmed-value` line per parsed header. `incomplete` and
+`invalid` are represented by their state name alone. The format is an
+acceptance-test serialization, not an HTTP wire format.

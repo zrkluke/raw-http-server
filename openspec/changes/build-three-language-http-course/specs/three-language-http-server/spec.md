@@ -83,9 +83,25 @@ full HTTP method-token grammar; those protocol details are deliberately deferred
 ### Requirement: Milestone 5 HTTP Headers
 Each implementation SHALL incrementally parse header field names and values until the terminating empty line and SHALL treat field names case-insensitively.
 
+For this learning milestone, the header parser receives bytes beginning with the
+first header field (the request line has already been handled by Milestone 4).
+Each non-empty line SHALL contain a non-empty field name, one colon separator,
+and a field value. The parser SHALL normalize ASCII field names to lowercase and
+trim only leading and trailing SP or HTAB from values. It SHALL preserve the
+order of repeated field names. It SHALL reject a missing colon, leading
+whitespace (obsolete line folding), bare LF, and a confirmed bare CR. Field
+semantics such as `Content-Length`, field-specific syntax, limits, and body
+framing are deliberately deferred.
+
 #### Scenario: Headers cross read boundaries
 - **WHEN** header names, values, or CRLF delimiters are divided across input chunks
 - **THEN** the parsed headers match the result produced when the same bytes are supplied at once
+
+#### Scenario: Header section terminates
+- **WHEN** the parser receives an empty CRLF-delimited line after zero or more
+  valid header fields
+- **THEN** it reports a complete header section and does not treat that empty
+  line as a header field
 
 ### Requirement: Milestone 6 HTTP Body
 Each implementation SHALL read the request body according to the validated `Content-Length` and SHALL not consume bytes beyond that body.
