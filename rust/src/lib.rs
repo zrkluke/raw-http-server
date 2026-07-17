@@ -565,6 +565,7 @@ fn serve_response_once(listener: TcpListener, response: Response) -> io::Result<
         ));
     }
 
+    // TcpStream::write_all retries partial writes so the client receives one complete response.
     connection.write_all(&response.bytes())
 }
 

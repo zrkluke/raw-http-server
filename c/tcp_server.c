@@ -69,6 +69,7 @@ static int read_client(int client, unsigned char **received,
     return 0;
 }
 
+/* A single write may be partial, so keep going until every response byte is sent. */
 static int write_all(int client, const unsigned char *response,
                      size_t response_length) {
     size_t offset = 0;

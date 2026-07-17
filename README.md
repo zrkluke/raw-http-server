@@ -21,6 +21,18 @@ Hello, World!
 TCP integration test 會真的連到本機 listener、送出 request、讀到 server
 關閉連線為止，再將 response 與 fixture 逐 byte 比較。
 
+## 傳送時要注意的事
+
+- HTTP/1.1 response 是 bytes：status line 與每個 header 都以 `\r\n` 結束；
+  headers 與 body 之間必須有一個空白行，也就是 `\r\n\r\n`。
+- `Content-Length` 是 body 的 **byte 數**，不是字元數。這個固定範例是 ASCII，
+  所以 `Hello, World!` 同時是 13 個字元與 13 bytes；之後處理非 ASCII 或 binary
+  payload 時，兩者不一定相同。
+- TCP 的一次 `write`／`send` 不保證送出全部 bytes。因此 C、Go、Rust 都會持續
+  寫入到完整 response 已送出，或回報錯誤。
+- 此步固定使用 `Connection: close`：server 寫完 response 後關閉 connection，
+  client 可由 EOF 知道這次 response 結束。keep-alive 與多個 request 尚未實作。
+
 ## 驗收
 
 請在 WSL 的 repository 根目錄執行：
