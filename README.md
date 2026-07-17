@@ -1,83 +1,71 @@
-# Step 6：HTTP Body
+# Step 7：HTTP Responses
 
-這一步讓 C、Go、Rust 在已知 `Content-Length` 後，從 TCP byte stream
-逐步累積 HTTP request body。parser 只取走宣告長度內的 bytes，並保留多出
-的 bytes，讓後續功能可以繼續處理它們。
+這個分支讓 C、Go、Rust 的 TCP server 在收到一個 request 後，回傳同一份
+有限範圍的 HTTP/1.1 response。重點不是 routing 或 framework，而是親手組裝並
+傳送 HTTP bytes：status line、headers、空白行與 body。
 
-這不是把 body 當成文字，也不會假設一次 TCP read 就剛好拿到完整 body。
+## 這一步完成了什麼
 
-## 本步完成的行為
+三個實作都回傳下列固定 response，並由 shared fixture 驗證每一個 byte：
 
-共享 fixture [`testdata/bodies/`](testdata/bodies) 驗證五種情況：
+```http
+HTTP/1.1 200 OK
+Content-Type: text/plain
+Content-Length: 13
+Connection: close
 
-| 情況 | `Content-Length` | 輸入 bytes | 預期結果 |
-| --- | --- | --- | --- |
-| 缺少欄位 | absent | `after\n` | complete；body 為空，全部保留為 remaining |
-| 完整 body | `6` | `hello\n` | complete；累積六個 bytes |
-| 尚未收齊 | `6` | `hel\n` | incomplete；保留已收到的四個 bytes |
-| 非法欄位 | `not-a-number` | `hello\n` | invalid；不消耗任何 bytes |
-| 收到過多 | `4` | `cat\nnext\n` | complete；body 是 `cat\n`，`next\n` 保留 |
+Hello, World!
+```
 
-`chunks.txt` 仍描述 TCP read 的分段方式。相同的 raw bytes 即使在不同
-chunk 邊界到達，最終 body、state 與 remaining bytes 都必須一致。
+`Content-Length` 不是手動寫死成協定的一部分；它由 body 的 byte 長度產生。
+TCP integration test 會真的連到本機 listener、送出 request、讀到 server
+關閉連線為止，再將 response 與 fixture 逐 byte 比較。
 
 ## 驗收
 
-在 WSL 的 repository 根目錄執行：
+請在 WSL 的 repository 根目錄執行：
 
 ```bash
 make verify
 ```
 
-這會累積驗證 Step 1 到 Step 6：
-
-- C：strict warnings、native unit/shared acceptance tests、ASan 與 UBSan
-- Go：`gofmt`、`go vet`、native unit/shared acceptance tests
-- Rust：`cargo fmt --check`、Clippy、native unit/shared acceptance tests
+它會執行 C 的 strict warnings、sanitizers 與 tests，Go 的 `gofmt`、`go vet`
+與 tests，以及 Rust 的 `cargo fmt --check`、Clippy 與 tests；同時保留所有前面
+Step 1–6 的回歸測試。
 
 ## Function 對照
 
 | 責任 | C | Go | Rust |
 | --- | --- | --- | --- |
-| 建立 body parser | [`body_parser_init`](c/body_parser.c) | [`NewBodyParser`](go/internal/httprequest/body.go) | [`BodyParser::new`](rust/src/lib.rs) |
-| 餵入 TCP bytes | [`body_parser_feed`](c/body_parser.c) | [`BodyParser.Feed`](go/internal/httprequest/body.go) | [`BodyParser::feed`](rust/src/lib.rs) |
-| 取得 parser state | [`body_parser_state`](c/body_parser.c) | `BodyParser.State` | [`BodyParser::state`](rust/src/lib.rs) |
-| 取得已累積 body | [`body_parser_body`](c/body_parser.c) | `BodyParser.Body` | [`BodyParser::body`](rust/src/lib.rs) |
-| 取得未消耗 bytes | [`body_parser_remaining`](c/body_parser.c) | `BodyParser.Remaining` | [`BodyParser::remaining`](rust/src/lib.rs) |
-| 結束生命週期 | [`body_parser_free`](c/body_parser.c) | Go GC | Rust RAII |
+| 建立固定 200 response | [`http_response_basic_ok`](c/http_response.c) | [`httpresponse.BasicOK`](go/internal/httpresponse/response.go) | [`Response::basic_ok`](rust/src/lib.rs) |
+| 組裝 response bytes | [`http_response_build`](c/http_response.c) | [`Response.Bytes`](go/internal/httpresponse/response.go) | [`Response::bytes`](rust/src/lib.rs) |
+| 接收一次並回寫 response | [`tcp_server_respond_once`](c/tcp_server.c) | [`StartResponseOnce`](go/internal/tcpserver/server.go) | [`TcpServer::start_response_once`](rust/src/lib.rs) |
+| TCP byte-exact 驗收 | [`response_acceptance_test.c`](c/tests/response_acceptance_test.c) | [`response_acceptance_test.go`](go/internal/tcpserver/response_acceptance_test.go) | [`response_acceptance.rs`](rust/tests/response_acceptance.rs) |
 
-C 的 `struct body_parser` 明確管理 body 與 remaining 的配置容量，並由呼叫端
-執行 `body_parser_free`。Go 使用兩個可成長的 `[]byte`，以 `State` 與
-copy-on-read slice 表示結果。Rust 則以 `Vec<u8>` 擁有兩段資料，`BodyState`
-表達狀態，離開 scope 時由 RAII 自動釋放記憶體。
+C 明確配置與釋放 response buffer；Go 以 slice、`error`、`defer` 和 `io.Writer`
+處理寫入；Rust 以 `Vec<u8>`、`Result`、`write_all` 與 thread/RAII 管理資源。
+三者的 observable behavior 相同，但不做逐行翻譯。
 
 ## 重要檔案
 
-| 檔案 | 用途 |
-| --- | --- |
-| [`testdata/bodies/`](testdata/bodies) | 共用 body bytes、state、remaining 與 chunk fixture |
-| [`testdata/README.md`](testdata/README.md) | body fixture metadata 的精確定義 |
-| [`go/internal/httprequest/body.go`](go/internal/httprequest/body.go) | Go 的 `Content-Length` body parser |
-| [`go/internal/httprequest/body_acceptance_test.go`](go/internal/httprequest/body_acceptance_test.go) | Go 讀取 shared fixtures |
-| [`c/body_parser.h`](c/body_parser.h) | C 的 state、buffer 與 ownership 契約 |
-| [`c/body_parser.c`](c/body_parser.c) | C 的 bytes 累積與 remaining 管理 |
-| [`c/tests/body_parser_acceptance_test.c`](c/tests/body_parser_acceptance_test.c) | C 讀取 shared fixtures |
-| [`rust/src/lib.rs`](rust/src/lib.rs) | Rust 的 `BodyParser`、`BodyState` 與單元測試 |
-| [`rust/tests/body_parser_acceptance.rs`](rust/tests/body_parser_acceptance.rs) | Rust 讀取 shared fixtures |
+- [`testdata/responses/basic/`](testdata/responses/basic)：request 與預期 response
+  的原始 bytes。
+- [`go/internal/httpresponse/response.go`](go/internal/httpresponse/response.go)：Go
+  的 response serializer。
+- [`c/http_response.c`](c/http_response.c)：C 的 response builder。
+- [`rust/src/lib.rs`](rust/src/lib.rs)：Rust 的 `Response` 與 one-shot response
+  server。
 
-## 本步刻意不做
+## 這一步刻意不做
 
-- 從 parsed headers 自動找出或驗證 `Content-Length`；本步以 fixture metadata
-  模擬已取得的欄位值。
-- `Transfer-Encoding: chunked`、trailers 或其他 body framing。
-- 把 body 解碼成 UTF-8、JSON、form data，或交給 application framework。
-- keep-alive、多個 request 的 pipeline、response 寫回與 production hardening。
+- 依據 method、path 或 application handler 選擇不同 response。
+- 完整解析並驗證 request 後才回應；此處只需要讀到非空 request bytes。
+- keep-alive、多 request pipeline、chunked response、TLS、HTTP/2 或 framework。
 
-## 版本導覽
+## 導覽
 
-- 前一步固定快照：[Step 5：HTTP Headers](https://github.com/zrkluke/raw-http-server/tree/step-5-headers-v1)
-- 目前開發分支：`step-6-body`
-- 本步通過文件 review、commit 與 tag 後，會建立 immutable snapshot。
-- 完整學習地圖請看 [main README](https://github.com/zrkluke/raw-http-server/tree/main)。
-- WSL 與工作流程請看 [development setup](docs/development-setup.md) 與
-  [development workflow](docs/development-workflow.md)。
+- 前一階段：[Step 6：HTTP Body](https://github.com/zrkluke/raw-http-server/tree/step-6-body-v1)
+- 目前分支：`step-7-responses`
+- 完整學習地圖：[main README](https://github.com/zrkluke/raw-http-server/tree/main)
+- 環境與流程：[development setup](docs/development-setup.md)、
+  [development workflow](docs/development-workflow.md)

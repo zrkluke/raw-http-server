@@ -1,4 +1,4 @@
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpListener};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, SyncSender};
 use std::thread;
@@ -443,6 +443,42 @@ pub struct TcpServer {
     done: Receiver<io::Result<()>>,
 }
 
+/// A limited byte-oriented HTTP/1.1 response used by this course.
+pub struct Response {
+    status_code: u16,
+    reason: &'static str,
+    content_type: &'static str,
+    body: Vec<u8>,
+}
+
+impl Response {
+    /// Returns the course's fixed text response.
+    pub fn basic_ok() -> Self {
+        Self {
+            status_code: 200,
+            reason: "OK",
+            content_type: "text/plain",
+            body: b"Hello, World!".to_vec(),
+        }
+    }
+
+    /// Serializes a status line, headers, header terminator, and body.
+    pub fn bytes(&self) -> Vec<u8> {
+        let header = format!(
+            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            self.status_code,
+            self.reason,
+            self.content_type,
+            self.body.len()
+        );
+        let mut bytes = Vec::with_capacity(header.len() + self.body.len());
+
+        bytes.extend_from_slice(header.as_bytes());
+        bytes.extend_from_slice(&self.body);
+        bytes
+    }
+}
+
 impl TcpServer {
     /// Binds an address and starts a background task that accepts one client.
     pub fn start_once(address: &str) -> io::Result<Self> {
@@ -453,6 +489,26 @@ impl TcpServer {
 
         let _server_thread = thread::spawn(move || {
             let result = serve_once(listener, received_sender);
+
+            let _ = done_sender.send(result);
+        });
+
+        Ok(Self {
+            address,
+            received,
+            done,
+        })
+    }
+
+    /// Binds an address and writes the course's basic response to one client.
+    pub fn start_response_once(address: &str) -> io::Result<Self> {
+        let listener = TcpListener::bind(address)?;
+        let address = listener.local_addr()?;
+        let (_received_sender, received) = mpsc::sync_channel(1);
+        let (done_sender, done) = mpsc::sync_channel(1);
+
+        let _server_thread = thread::spawn(move || {
+            let result = serve_response_once(listener, Response::basic_ok());
 
             let _ = done_sender.send(result);
         });
@@ -496,6 +552,22 @@ fn serve_once(listener: TcpListener, received: SyncSender<io::Result<Vec<u8>>>) 
     }
 }
 
+fn serve_response_once(listener: TcpListener, response: Response) -> io::Result<()> {
+    let (mut connection, _) = listener.accept()?;
+
+    drop(listener);
+    let mut buffer = [0_u8; 4096];
+    let count = connection.read(&mut buffer)?;
+    if count == 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "client closed before sending a request",
+        ));
+    }
+
+    connection.write_all(&response.bytes())
+}
+
 fn channel_error(error: RecvTimeoutError) -> io::Error {
     match error {
         RecvTimeoutError::Timeout => io::Error::new(io::ErrorKind::TimedOut, "server timed out"),
@@ -509,7 +581,7 @@ fn channel_error(error: RecvTimeoutError) -> io::Error {
 mod tests {
     use super::{
         BodyParser, BodyState, HeaderParser, HeaderState, LineReader, RequestLine, RequestParser,
-        RequestState, TcpServer,
+        RequestState, Response, TcpServer,
     };
 
     #[test]
@@ -726,5 +798,13 @@ mod tests {
         assert_eq!(parser.feed(b"next"), BodyState::Complete);
         assert_eq!(parser.body(), b"");
         assert_eq!(parser.remaining(), b"next");
+    }
+
+    #[test]
+    fn basic_ok_serializes_a_byte_exact_response() {
+        assert_eq!(
+            Response::basic_ok().bytes(),
+            b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 13\r\nConnection: close\r\n\r\nHello, World!"
+        );
     }
 }

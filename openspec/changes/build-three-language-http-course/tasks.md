@@ -57,10 +57,10 @@
 
 ## 8. Milestone 7 - HTTP Responses
 
-- [ ] 8.1 Add failing byte-exact response fixtures and black-box TCP response acceptance tests
-- [ ] 8.2 Implement and unit-test status line, headers, content length, body, and connection writing in Go
-- [ ] 8.3 Implement and unit-test equivalent HTTP response behavior in C
-- [ ] 8.4 Implement and unit-test equivalent HTTP response behavior in Rust
+- [x] 8.1 Add failing byte-exact response fixtures and black-box TCP response acceptance tests
+- [x] 8.2 Implement and unit-test status line, headers, content length, body, and connection writing in Go
+- [x] 8.3 Implement and unit-test equivalent HTTP response behavior in C
+- [x] 8.4 Implement and unit-test equivalent HTTP response behavior in Rust
 - [ ] 8.5 Run unified regression and integration checks, document the comparison, and create the verified milestone ref
 
 ## 9. Milestone 8 - Chunked Encoding

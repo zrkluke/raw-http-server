@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -31,6 +32,63 @@ static int reserve_bytes(unsigned char **bytes, size_t *capacity,
     }
     *bytes = grown;
     *capacity = next_capacity;
+    return 0;
+}
+
+static int read_client(int client, unsigned char **received,
+                       size_t *received_length) {
+    unsigned char buffer[4096];
+    unsigned char *bytes = NULL;
+    size_t capacity = 0;
+    size_t length = 0;
+
+    for (;;) {
+        ssize_t count = read(client, buffer, sizeof(buffer));
+
+        if (count == 0) {
+            break;
+        }
+        if (count < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            free(bytes);
+            return -1;
+        }
+        if (length > SIZE_MAX - (size_t)count ||
+            reserve_bytes(&bytes, &capacity, length + (size_t)count) != 0) {
+            free(bytes);
+            return -1;
+        }
+        memcpy(bytes + length, buffer, (size_t)count);
+        length += (size_t)count;
+    }
+
+    *received = bytes;
+    *received_length = length;
+    return 0;
+}
+
+static int write_all(int client, const unsigned char *response,
+                     size_t response_length) {
+    size_t offset = 0;
+
+    while (offset < response_length) {
+        ssize_t written = write(client, response + offset,
+                                response_length - offset);
+
+        if (written < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return -1;
+        }
+        if (written == 0) {
+            errno = EIO;
+            return -1;
+        }
+        offset += (size_t)written;
+    }
     return 0;
 }
 
@@ -73,10 +131,6 @@ int tcp_server_open(struct tcp_server *server, const char *address,
 
 int tcp_server_accept_once(struct tcp_server *server, unsigned char **received,
                            size_t *received_length) {
-    unsigned char buffer[4096];
-    unsigned char *bytes = NULL;
-    size_t capacity = 0;
-    size_t length = 0;
     int client;
 
     if (server == NULL || server->listener_fd < 0 || received == NULL ||
@@ -93,39 +147,50 @@ int tcp_server_accept_once(struct tcp_server *server, unsigned char **received,
     }
     tcp_server_close(server);
 
-    for (;;) {
-        ssize_t count = read(client, buffer, sizeof(buffer));
-
-        if (count == 0) {
-            break;
-        }
-        if (count < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            free(bytes);
-            close(client);
-            return -1;
-        }
-        if (length > SIZE_MAX - (size_t)count ||
-            reserve_bytes(&bytes, &capacity, length + (size_t)count) != 0) {
-            free(bytes);
-            close(client);
-            return -1;
-        }
-        for (size_t index = 0; index < (size_t)count; index++) {
-            bytes[length + index] = buffer[index];
-        }
-        length += (size_t)count;
-    }
-
-    if (close(client) != 0) {
-        free(bytes);
+    if (read_client(client, received, received_length) != 0 ||
+        close(client) != 0) {
+        free(*received);
+        *received = NULL;
+        *received_length = 0;
         return -1;
     }
-    *received = bytes;
-    *received_length = length;
     return 0;
+}
+
+int tcp_server_respond_once(struct tcp_server *server,
+                            const unsigned char *response,
+                            size_t response_length, unsigned char **received,
+                            size_t *received_length) {
+    int client;
+    int result;
+
+    if (server == NULL || server->listener_fd < 0 || response == NULL ||
+        response_length == 0 || received == NULL || received_length == NULL) {
+        errno = EINVAL;
+        return -1;
+    }
+    *received = NULL;
+    *received_length = 0;
+
+    client = accept(server->listener_fd, NULL, NULL);
+    if (client < 0) {
+        return -1;
+    }
+    tcp_server_close(server);
+
+    result = read_client(client, received, received_length);
+    if (result == 0) {
+        result = write_all(client, response, response_length);
+    }
+    if (close(client) != 0 && result == 0) {
+        result = -1;
+    }
+    if (result != 0) {
+        free(*received);
+        *received = NULL;
+        *received_length = 0;
+    }
+    return result;
 }
 
 unsigned short tcp_server_port(const struct tcp_server *server) {
