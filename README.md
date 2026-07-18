@@ -1,75 +1,84 @@
-# Raw HTTP Server in C, Go, and Rust
+# 從 TCP 位元組串流手寫 HTTP/1.1：C、Go、Rust 對照學習
 
-## 開發環境
+這是一個學習型專案：不使用現成 HTTP server、HTTP parser 或 web framework，
+而是從 TCP socket 讀到的 bytes 開始，逐步手寫 HTTP/1.1 的核心機制。
 
-本專案統一使用 Ubuntu on WSL 2 進行開發與驗證。完整的 WSL、C、Go、
-Rust、Git、專案複製及骨架驗證流程，請參考
-[WSL 開發環境設定](docs/development-setup.md)。
+同一組行為會分別以 C、Go、Rust 實作。重點不是把程式逐行翻譯，而是比較同一責任
+在不同語言中如何表達：C 的 buffer、pointer 與 cleanup，Go 的 slice、`error` 與
+goroutine，以及 Rust 的 ownership、`Result` 與 RAII。
 
-這是一個以學習為目的的 Spec Driven Development 專案：分別使用 C、Go、
-Rust，從 TCP byte stream 開始實作 HTTP/1.1，藉此比較三種語言如何處理
-相同的網路、解析、錯誤與資源管理問題。
+## 你會學到什麼
 
-專案靈感來自 ThePrimeagen 與 Boot.dev 的
-[From TCP to HTTP](https://www.youtube.com/watch?v=FknTw9bJsXM) 課程。
+- TCP 是沒有訊息邊界的 byte stream；一次 `read` 不等於一次 HTTP request。
+- HTTP/1.1 如何用 CRLF、request line、headers 與 body framing 建立訊息邊界。
+- TCP 可以在任意 byte 切開資料；因此 parser 必須保留狀態，處理逐 byte、CRLF
+  跨 read、欄位跨 read 與多種切分方式，不能假設一次 `read` 就是完整 HTTP 單位。
+- `Content-Length` 會要求 socket 讀到固定 N bytes；chunked 則交替讀取 size line
+  與對應 data bytes，直到終止 chunk。兩者都不能把 TCP EOF 當作 body 邊界。
+- 同一個 HTTP 任務在三種語言裡怎麼實際處理 bytes、錯誤與資源：
+  - **C**：你自己決定 byte buffer 多大；pointer 是資料所在記憶體位置；用完 socket
+    或配置的記憶體時，程式要明確關閉或釋放。
+  - **Go**：`slice` 是一段可切取的 bytes 視圖；函式通常把錯誤當回傳值交給呼叫端；
+    `defer` 可登記「函式結束時要做的 cleanup」，goroutine 可讓 server 工作在背景執行。
+  - **Rust**：`Vec<u8>` 是可成長的 byte 容器；ownership 表示誰負責資料生命週期，
+    borrowing 表示暫時借用資料而不複製；`Result` 強迫程式處理成功或失敗，離開範圍時
+    RAII 會自動釋放資源。
 
-## 學習目標
+## 學習路徑
 
-- 理解 TCP stream、buffer、partial read 與 HTTP/1.1 的核心機制。
-- 以 function 對 function 的方式比較 C、Go、Rust。
-- 保留各語言慣用的型別、錯誤處理、記憶體與資源管理方式。
-- 透過規格驗收測試、TDD 與累積回歸測試降低早期設計錯誤的風險。
+| Step | 主題 | 建立的責任 |
+| --- | --- | --- |
+| 1 | HTTP Streams | 從 fragmented TCP bytes 讀出 CRLF line |
+| 2 | TCP | listen、connect、accept、read、cleanup |
+| 3 | Requests | 區分 incomplete、complete、invalid request head |
+| 4 | Request Lines | 驗證 method、target、`HTTP/1.1` |
+| 5 | Headers | 增量解析、名稱正規化與 CRLF termination |
+| 6 | Body | 依 `Content-Length` 精確讀取 bytes |
+| 7 | Responses | 序列化與傳送 HTTP response |
+| 8 | Chunked Encoding | 解碼 chunk size、data、terminator 與 trailers |
+| 9 | Binary Data | 將前八步組成一條 byte-safe HTTP connection 流程 |
 
-## 實作界線
+## 三語言怎麼對照
 
-實作與測試預設只使用標準工具鏈、語言標準函式庫與作業系統 Socket
-API，不使用現成 HTTP Server、HTTP Parser、Web framework、async
-runtime 或第三方實作依賴。C 版以 WSL 中的 POSIX sockets 為基準。
+| 概念 | C | Go | Rust |
+| --- | --- | --- | --- |
+| CRLF stream line | `c/line_reader.*` | `go/internal/httpstream/line_reader.go` | `rust/src/line_reader.rs` |
+| TCP lifecycle / binary echo | `c/tcp_server.*`、`c/http_echo_server.*` | `go/internal/tcpserver/server.go` | `rust/src/tcp_server.rs` |
+| Request parsing | `c/request_parser.*`、`c/request_line.*` | `go/internal/httprequest/request*.go` | `rust/src/request.rs`、`rust/src/request_line.rs` |
+| Headers / body / chunked | `c/*_parser.*` | `go/internal/httprequest/{header,body,chunked}.go` | `rust/src/{header,body,chunked}.rs` |
+| Response bytes | `c/http_response.*` | `go/internal/httpresponse/response.go` | `rust/src/response.rs` |
 
-## 九個里程碑
+[Rust Module Map](docs/rust-module-map.md) 提供更完整的 Rust 檔案與 C／Go 對照。
 
-1. HTTP Streams
-2. TCP
-3. Requests
-4. Request Lines
-5. HTTP Headers
-6. HTTP Body
-7. HTTP Responses
-8. Chunked Encoding
-9. Binary Data
+## Step 9：把前八步接成一條 HTTP connection
 
-每個里程碑都會先定義驗收案例，再分別以三種語言實作。里程碑完成前，
-必須通過該階段與所有先前階段的測試。
+Step 9 的 one-request `POST /echo HTTP/1.1` server 會選擇唯一合法的
+`Content-Length` 或 course-defined `Transfer-Encoding: chunked` framing，並以
+`image/bmp` 回傳完全相同的 bytes。它拒絕兩種 framing 同時出現的請求，也不需要
+客戶端先送 EOF 才回應。
 
-## 專案狀態
+TCP 從 Step 1 開始傳遞的就是 bytes；差別在 HTTP/1.1 的 request line 與 headers
+以 delimiter 解析，body 則必須依長度或 chunked 結構定界。binary body 可以包含
+`\r\n`，所以不能交給逐行 parser。把這個整合放在最後，能清楚看見 HTTP/1.1
+「文字訊息頭 + 不透明 body」交界的複雜性，也為理解 HTTP/2、HTTP/3 的 binary
+frames、多路複用與 header compression 鋪路；後兩者不在本專案範圍。
 
-目前已完成 OpenSpec 規格提案與三語言空專案骨架，尚未開始 HTTP Server
-實作。詳細規格位於
-[`openspec/changes/build-three-language-http-course`](openspec/changes/build-three-language-http-course)。
+## 驗證
 
-## 預計結構
+在 Ubuntu on WSL、repository root 執行：
 
-```text
-raw-http-server/
-├── README.md
-├── c/
-│   ├── Makefile
-│   └── main.c
-├── docs/
-│   └── development-setup.md
-├── go/
-│   ├── go.mod
-│   └── main.go
-├── rust/
-│   ├── Cargo.lock
-│   ├── Cargo.toml
-│   └── src/
-│       └── main.rs
-└── testdata/
+```bash
+make verify
 ```
 
-`testdata/` 會在共用驗收資料建立後加入。
+它會執行 C strict warnings 與 sanitizers、Go vet/tests、Rust format/clippy/tests，
+以及 shared fixtures 與 TCP integrations。
 
-本專案依據適用的 HTTP/1.1 RFC 實作與驗證課程範圍內的協定行為，
-但不以涵蓋完整 RFC、production-ready 或高效能 HTTP Server 為目標；
-所有刻意簡化的行為都會在對應里程碑中明確記錄。
+## 範圍、文件與版本
+
+- 僅使用語言標準函式庫與作業系統 socket API；C 以 WSL Ubuntu 的 POSIX sockets
+  為準。
+- 不實作 keep-alive、routing、TLS、HTTP/2、HTTP/3、完整 RFC conformance 或任何
+  production hardening。
+- [開發環境](docs/development-setup.md) · [開發流程](docs/development-workflow.md) · [最終驗收矩陣](docs/course-completion.md)
+- 每個 `step-*-v*` tag 是已驗證的 milestone 快照；最終累積版本會在 `main`。

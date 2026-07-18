@@ -1,2 +1,18 @@
+# Repository text files are verified from WSL and should keep LF endings.
+.gitattributes text eol=lf
+.gitignore text eol=lf
+*.md text eol=lf
+
 # Build metadata should not dominate the educational language comparison.
 c/Makefile linguist-detectable=false
+
+# Source and build files should keep LF endings across Windows and WSL.
+*.c text eol=lf
+*.h text eol=lf
+*.go text eol=lf
+*.rs text eol=lf
+Makefile text eol=lf
+*.mk text eol=lf
+
+# Shared fixtures are byte-exact protocol data on every platform.
+testdata/** -text

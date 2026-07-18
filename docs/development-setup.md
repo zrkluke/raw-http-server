@@ -87,6 +87,12 @@ cargo --version
 rustup --version
 ```
 
+確認格式化與 lint 元件已安裝：
+
+```bash
+rustup component add rustfmt clippy
+```
+
 ## 5. 將專案複製到 Linux 檔案系統
 
 建議把 working copy 放在 WSL 的 home directory，而不是 `/mnt/c`。
@@ -112,7 +118,15 @@ ls
 
 ## 6. 驗證三種語言的專案骨架
 
-在 repository 根目錄執行：
+在 repository 根目錄使用統一驗證入口：
+
+```bash
+make verify
+```
+
+此命令會依序執行 C 的嚴格警告、測試與 sanitizer，Go 的格式、靜態分析
+與測試，以及 Rust 的格式、Clippy 與測試。也可以分別執行底層命令以
+了解每個語言工具鏈的行為：
 
 ```bash
 make -C c
