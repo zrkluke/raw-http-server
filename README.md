@@ -11,9 +11,18 @@ goroutine，以及 Rust 的 ownership、`Result` 與 RAII。
 
 - TCP 是沒有訊息邊界的 byte stream；一次 `read` 不等於一次 HTTP request。
 - HTTP/1.1 如何用 CRLF、request line、headers 與 body framing 建立訊息邊界。
-- 為什麼 parser 必須處理逐 byte、CRLF 跨 read、欄位跨 read 與多種切分方式。
-- `Content-Length`、chunked transfer encoding 與 binary body 如何影響 socket 讀取。
-- 三種語言如何以不同的型別、錯誤與資源管理模型完成相同行為。
+- TCP 可以在任意 byte 切開資料；因此 parser 必須保留狀態，處理逐 byte、CRLF
+  跨 read、欄位跨 read 與多種切分方式，不能假設一次 `read` 就是完整 HTTP 單位。
+- `Content-Length` 會要求 socket 讀到固定 N bytes；chunked 則交替讀取 size line
+  與對應 data bytes，直到終止 chunk。兩者都不能把 TCP EOF 當作 body 邊界。
+- 同一個 HTTP 任務在三種語言裡怎麼實際處理 bytes、錯誤與資源：
+  - **C**：你自己決定 byte buffer 多大；pointer 是資料所在記憶體位置；用完 socket
+    或配置的記憶體時，程式要明確關閉或釋放。
+  - **Go**：`slice` 是一段可切取的 bytes 視圖；函式通常把錯誤當回傳值交給呼叫端；
+    `defer` 可登記「函式結束時要做的 cleanup」，goroutine 可讓 server 工作在背景執行。
+  - **Rust**：`Vec<u8>` 是可成長的 byte 容器；ownership 表示誰負責資料生命週期，
+    borrowing 表示暫時借用資料而不複製；`Result` 強迫程式處理成功或失敗，離開範圍時
+    RAII 會自動釋放資源。
 
 ## 學習路徑
 
