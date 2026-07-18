@@ -73,11 +73,11 @@
 
 ## 10. Milestone 9 - Binary Data
 
-- [ ] 10.1 Add a known binary fixture and failing length-and-digest acceptance tests
-- [ ] 10.2 Implement and unit-test byte-safe binary transfer in Go
-- [ ] 10.3 Implement and unit-test equivalent byte-safe binary transfer in C
-- [ ] 10.4 Implement and unit-test equivalent byte-safe binary transfer in Rust
-- [ ] 10.5 Run the complete unified suite, document the final comparison, and create the verified milestone ref
+- [x] 10.1 Replace the placeholder fixture with a real BMP and add failing shared TCP acceptance cases for fragmented `Content-Length`, fragmented chunked, and ambiguous framing requests
+- [x] 10.2 Implement and unit-test the one-request HTTP/1.1 decoder and binary echo path in Go, reusing the prior request-line, header, body, response, and chunked responsibilities
+- [x] 10.3 Implement and unit-test the equivalent POSIX TCP decoder and binary echo path in C, including explicit buffer ownership and cleanup
+- [x] 10.4 Implement and unit-test the equivalent one-request decoder and binary echo path in Rust, including framing selection and ownership boundaries
+- [x] 10.5 Run the complete unified suite, document the final connection-level comparison and HTTP/1.1-to-HTTP/2/3 context, and create the verified milestone ref
 
 ## 11. Course Completion
 

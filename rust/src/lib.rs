@@ -628,6 +628,24 @@ impl Response {
         }
     }
 
+    fn image_bmp_ok(body: Vec<u8>) -> Self {
+        Self {
+            status_code: 200,
+            reason: "OK",
+            content_type: "image/bmp",
+            body,
+        }
+    }
+
+    fn bad_request() -> Self {
+        Self {
+            status_code: 400,
+            reason: "Bad Request",
+            content_type: "text/plain",
+            body: Vec::new(),
+        }
+    }
+
     /// Serializes a status line, headers, header terminator, and body.
     pub fn bytes(&self) -> Vec<u8> {
         let header = format!(
@@ -686,6 +704,25 @@ impl TcpServer {
         })
     }
 
+    /// Binds an address and serves one fully framed POST /echo request.
+    pub fn start_echo_once(address: &str) -> io::Result<Self> {
+        let listener = TcpListener::bind(address)?;
+        let address = listener.local_addr()?;
+        let (_received_sender, received) = mpsc::sync_channel(1);
+        let (done_sender, done) = mpsc::sync_channel(1);
+
+        let _server_thread = thread::spawn(move || {
+            let result = serve_echo_once(listener);
+            let _ = done_sender.send(result);
+        });
+
+        Ok(Self {
+            address,
+            received,
+            done,
+        })
+    }
+
     pub fn address(&self) -> SocketAddr {
         self.address
     }
@@ -733,6 +770,137 @@ fn serve_response_once(listener: TcpListener, response: Response) -> io::Result<
 
     // TcpStream::write_all retries partial writes so the client receives one complete response.
     connection.write_all(&response.bytes())
+}
+
+fn invalid_request() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::InvalidData,
+        "invalid course HTTP/1.1 request",
+    )
+}
+
+fn serve_echo_once(listener: TcpListener) -> io::Result<()> {
+    let (mut connection, _) = listener.accept()?;
+    drop(listener);
+
+    match read_echo_request(&mut connection) {
+        Ok(body) => connection.write_all(&Response::image_bmp_ok(body).bytes()),
+        Err(error) if error.kind() == io::ErrorKind::InvalidData => {
+            connection.write_all(&Response::bad_request().bytes())
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn read_echo_request(connection: &mut std::net::TcpStream) -> io::Result<Vec<u8>> {
+    let (head, initial) = read_request_head(connection)?;
+    let line_end = head
+        .windows(2)
+        .position(|window| window == b"\r\n")
+        .ok_or_else(invalid_request)?;
+    let line = RequestLine::parse(&head[..line_end]).map_err(|_| invalid_request())?;
+    if line.method != b"POST" || line.target != b"/echo" || line.version != b"HTTP/1.1" {
+        return Err(invalid_request());
+    }
+    let mut headers = HeaderParser::new();
+    if headers.feed(&head[line_end + 2..]) != HeaderState::Complete {
+        return Err(invalid_request());
+    }
+    match select_echo_framing(headers.headers())? {
+        EchoFraming::ContentLength(value) => read_content_length_body(connection, initial, &value),
+        EchoFraming::Chunked => read_chunked_body(connection, initial),
+    }
+}
+
+fn read_request_head(connection: &mut std::net::TcpStream) -> io::Result<(Vec<u8>, Vec<u8>)> {
+    let mut request = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        if let Some(end) = request.windows(4).position(|window| window == b"\r\n\r\n") {
+            let end = end + 4;
+            let mut parser = RequestParser::new();
+            if parser.feed(&request[..end]) != RequestState::Complete {
+                return Err(invalid_request());
+            }
+            return Ok((request[..end].to_vec(), request[end..].to_vec()));
+        }
+        let count = connection.read(&mut buffer)?;
+        if count == 0 {
+            return Err(invalid_request());
+        }
+        request.extend_from_slice(&buffer[..count]);
+    }
+}
+
+enum EchoFraming {
+    ContentLength(Vec<u8>),
+    Chunked,
+}
+
+fn select_echo_framing(headers: &[Header]) -> io::Result<EchoFraming> {
+    let mut content_length = None;
+    let mut transfer_encoding: Option<&[u8]> = None;
+    for header in headers {
+        if header.name() == b"content-length" {
+            if content_length.is_some() {
+                return Err(invalid_request());
+            }
+            content_length = Some(header.value().to_vec());
+        } else if header.name() == b"transfer-encoding" {
+            if transfer_encoding.is_some() {
+                return Err(invalid_request());
+            }
+            transfer_encoding = Some(header.value());
+        }
+    }
+    match (content_length, transfer_encoding) {
+        (Some(_), Some(_)) | (None, None) => Err(invalid_request()),
+        (Some(value), None) => Ok(EchoFraming::ContentLength(value)),
+        (None, Some(value)) if value.eq_ignore_ascii_case(b"chunked") => Ok(EchoFraming::Chunked),
+        (None, Some(_)) => Err(invalid_request()),
+    }
+}
+
+fn read_content_length_body(
+    connection: &mut std::net::TcpStream,
+    initial: Vec<u8>,
+    value: &[u8],
+) -> io::Result<Vec<u8>> {
+    let value = std::str::from_utf8(value).map_err(|_| invalid_request())?;
+    let mut parser = BodyParser::new(Some(value));
+    let mut state = parser.feed(&initial);
+    let mut buffer = [0_u8; 4096];
+    while state == BodyState::Incomplete {
+        let count = connection.read(&mut buffer)?;
+        if count == 0 {
+            return Err(invalid_request());
+        }
+        state = parser.feed(&buffer[..count]);
+    }
+    if state != BodyState::Complete {
+        return Err(invalid_request());
+    }
+    Ok(parser.body().to_vec())
+}
+
+fn read_chunked_body(
+    connection: &mut std::net::TcpStream,
+    initial: Vec<u8>,
+) -> io::Result<Vec<u8>> {
+    let mut parser = ChunkedParser::new();
+    let mut state = parser.feed(&initial);
+    let mut buffer = [0_u8; 4096];
+    while state == ChunkedState::Incomplete {
+        let count = connection.read(&mut buffer)?;
+        if count == 0 {
+            return Err(invalid_request());
+        }
+        state = parser.feed(&buffer[..count]);
+    }
+    if state != ChunkedState::Complete {
+        return Err(invalid_request());
+    }
+    Ok(parser.body().to_vec())
 }
 
 fn channel_error(error: RecvTimeoutError) -> io::Error {

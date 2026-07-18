@@ -128,11 +128,46 @@ Each implementation SHALL process the course-defined HTTP/1.1 chunked transfer f
 - **WHEN** a milestone implementation decodes chunked transfer coding
 - **THEN** it SHALL accept hexadecimal chunk sizes, chunk data, the zero-size terminating chunk, and trailer fields using the existing header grammar
 - **AND** it SHALL reject malformed chunk framing
-- **AND** chunk extensions, forbidden trailer names, and `Transfer-Encoding` selection integration remain outside this course milestone
+- **AND** chunk extensions, forbidden trailer names, and `Transfer-Encoding` selection integration remain outside this course milestone; the latter is introduced only by Milestone 9
 
 ### Requirement: Milestone 9 Binary Data
-Each implementation SHALL transmit and receive protocol payloads as bytes without corrupting non-text data.
+Each implementation SHALL compose the prior stream, TCP, request-line, header,
+body, response, and chunked-decoding responsibilities into a byte-safe,
+one-request HTTP/1.1 server path.
 
-#### Scenario: Binary payload round trip
-- **WHEN** a known binary fixture is transferred through the completed server behavior
-- **THEN** the received length and cryptographic digest match the original fixture
+For this learning milestone, that path SHALL accept one `POST /echo HTTP/1.1`
+request, decode an opaque binary request body, and return the same bytes in a
+`200 OK` response with `Content-Type: image/bmp`, a generated
+`Content-Length`, and `Connection: close`.  It SHALL read until the selected
+message framing is complete and SHALL not require client EOF before responding.
+The fixed `/echo` handler is a learning integration point, not a routing
+framework.
+
+The request head SHALL use the existing strict CRLF request-line and header
+grammar.  A body is selected by exactly one of these forms:
+
+- one valid `Content-Length` field, decoded by the existing body behavior; or
+- one `Transfer-Encoding: chunked` field, decoded by the existing chunked
+  behavior.
+
+`Content-Length` together with `Transfer-Encoding`, unsupported transfer
+codings, malformed framing, and an invalid request line or header SHALL result
+in `400 Bad Request` and connection close; no request body bytes are echoed.
+Chunk extensions and advanced transfer-coding combinations remain out of scope.
+
+#### Scenario: Content-Length binary echo survives fragmentation
+- **WHEN** a real BMP fixture is sent as the `Content-Length` request body with
+  the request line, headers, CRLF boundary, and body divided across TCP writes
+- **THEN** the server returns before client EOF and the response body is byte-for-byte
+  equal to the fixture plus its raw CRLF suffix, including non-text octets
+
+#### Scenario: Chunked binary echo survives fragmentation
+- **WHEN** the same BMP fixture is sent as a course-defined chunked request body
+  with chunk metadata, payload, delimiters, and trailers divided across TCP writes
+- **THEN** the server returns the decoded payload byte-for-byte and uses its
+  decoded length for the response `Content-Length`
+
+#### Scenario: Ambiguous body framing is rejected
+- **WHEN** a request contains both `Content-Length` and `Transfer-Encoding: chunked`
+- **THEN** the server returns `400 Bad Request`, closes the connection, and does not
+  echo the supplied bytes

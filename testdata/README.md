@@ -94,3 +94,16 @@ This course supports hexadecimal chunk sizes, a zero-size terminator, and
 trailers parsed with the existing header grammar. Chunk extensions, forbidden
 trailer-name rules, and `Transfer-Encoding` selection integration are outside
 this milestone.
+
+## Binary transfer metadata
+
+`testdata/binary/echo-bmp/image.bmp` is a byte-exact, valid 1×1 BMP image.
+Its SHA-256 digest is recorded beside it.  The binary TCP acceptance cases load
+it without text decoding, append a raw `CRLF` suffix to the HTTP request body,
+and require a `POST /echo` response with the exact same bytes.
+
+The same cases exercise both `Content-Length` and course-defined
+`Transfer-Encoding: chunked` framing.  They deliberately divide the request
+head, framing delimiters, and opaque body across writes while leaving the
+client write side open.  An ambiguous request containing both framing headers
+must instead receive `400 Bad Request` and no echoed body.

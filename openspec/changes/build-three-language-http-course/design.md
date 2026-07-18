@@ -29,6 +29,40 @@ Development follows the course order: Streams, TCP, Requests, Request Lines, Hea
 
 Alternative considered: four broad milestones. Rejected because parser, body, and transfer-encoding mistakes would be discovered too late and the snapshots would be less useful for comparison.
 
+### Binary Data as the connection-level integration milestone
+
+The byte model begins in Milestone 1; every TCP read has always been bytes.
+Milestone 9 does not introduce a second kind of transport data.  It completes
+the HTTP/1.1 boundary that earlier milestones deliberately isolated: request
+line and headers are delimiter-driven text, while the message body is opaque
+octets whose boundary is selected by message framing.
+
+The completed learning server handles one connection and one
+`POST /echo HTTP/1.1` request.  It incrementally reads from the socket, validates
+the request line and headers, selects either a validated `Content-Length` body
+or the course-defined `Transfer-Encoding: chunked` body, and writes a
+`200 OK` `image/bmp` response containing exactly the decoded request bytes.
+It closes the connection after that response.  This is intentionally a fixed
+handler, not a routing framework or a reusable production server.
+
+The shared fixture is a real BMP containing NUL, LF, and non-text octets.  The
+acceptance payload appends a raw `CRLF` byte pair after that image, so the body
+also contains bytes meaningful to a header parser.  Acceptance clients split
+both headers and body across writes and wait for the response without first
+closing their write side.  Therefore success demonstrates that the server
+stops at the declared message boundary, rather than treating EOF or a text
+delimiter inside the body as the boundary.
+
+Milestone 8 intentionally taught chunk decoding in isolation.  Milestone 9
+adds the narrowly-scoped header-to-framing selection needed to compose it:
+exactly one `Transfer-Encoding: chunked` is supported; it is mutually exclusive
+with `Content-Length`; other transfer codings remain out of scope.  The
+ambiguous combination is rejected before any body is echoed.
+
+Alternative considered: return a preloaded binary response after any non-empty
+read.  Rejected because it bypasses request parsing and cannot establish the
+text/body boundary that Binary Data is meant to teach.
+
 ### Shared behavior, idiomatic implementations
 
 Equivalent functions SHALL have the same responsibility and observable behavior, while signatures and internal representations follow language conventions. C will expose explicit buffers and ownership; Go will use slices and `error`; Rust will use borrowing, enums, `Result`, and RAII where appropriate.
