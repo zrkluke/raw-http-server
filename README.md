@@ -82,3 +82,7 @@ make verify
   production hardening。
 - [開發環境](docs/development-setup.md) · [開發流程](docs/development-workflow.md) · [最終驗收矩陣](docs/course-completion.md)
 - 每個 `step-*-v*` tag 是已驗證的 milestone 快照；最終累積版本會在 `main`。
+
+## 後續探索
+
+完成 Steps 1–9 後的延伸學習方向，請見 [後續探索路線圖](docs/roadmap.md)。
