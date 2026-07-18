@@ -84,4 +84,4 @@
 - [x] 11.1 Verify every milestone requirement and scenario is represented by an automated test or an explicitly documented manual check
 - [x] 11.2 Run all builds, unit tests, shared fixtures, TCP integrations, sanitizer checks, and lints from a clean WSL environment
 - [x] 11.3 Complete the README learning map with function-to-function links across C, Go, and Rust
-- [ ] 11.4 Confirm immutable tags resolve to each verified milestone and `main` contains the completed cumulative implementation
+- [x] 11.4 Confirm immutable tags resolve to each verified milestone and `main` contains the completed cumulative implementation
