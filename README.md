@@ -1,37 +1,36 @@
-# Step 7：HTTP Responses
+# Step 8：Chunked Encoding
 
-這個分支讓 C、Go、Rust 的 TCP server 在收到一個 request 後，回傳同一份
-有限範圍的 HTTP/1.1 response。重點不是 routing 或 framework，而是親手組裝並
-傳送 HTTP bytes：status line、headers、空白行與 body。
+這個分支讓 C、Go、Rust 以增量方式解碼本課程範圍內的 HTTP/1.1
+`Transfer-Encoding: chunked` body。它不是另一種文字編碼，而是一種 body framing：
+每段資料先以十六進位大小宣告，再接資料與 `\r\n` delimiter。
 
 ## 這一步完成了什麼
 
-三個實作都回傳下列固定 response，並由 shared fixture 驗證每一個 byte：
+三個實作都能處理：
 
-```http
-HTTP/1.1 200 OK
-Content-Type: text/plain
-Content-Length: 13
-Connection: close
+- 十六進位 chunk size，例如 `4\r\nWiki\r\n`；
+- 任意 TCP chunk 邊界，包括 size line、資料與 CRLF 被拆開；
+- `0\r\n` terminal chunk；
+- terminal chunk 後沿用既有 header grammar 解析的 trailers；
+- 完成後保留同一批輸入中多出的 bytes，供下一個協定階段使用。
 
-Hello, World!
+範例輸入：
+
+```text
+4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n
 ```
 
-`Content-Length` 不是手動寫死成協定的一部分；它由 body 的 byte 長度產生。
-TCP integration test 會真的連到本機 listener、送出 request、讀到 server
-關閉連線為止，再將 response 與 fixture 逐 byte 比較。
+解碼 body 是 `Wikipedia`。fixture 也驗證 trailer 被拆在不同輸入 chunk 時，仍能得到
+相同結果。
 
-## 傳送時要注意的事
+## 刻意不做的範圍
 
-- HTTP/1.1 response 是 bytes：status line 與每個 header 都以 `\r\n` 結束；
-  headers 與 body 之間必須有一個空白行，也就是 `\r\n\r\n`。
-- `Content-Length` 是 body 的 **byte 數**，不是字元數。這個固定範例是 ASCII，
-  所以 `Hello, World!` 同時是 13 個字元與 13 bytes；之後處理非 ASCII 或 binary
-  payload 時，兩者不一定相同。
-- TCP 的一次 `write`／`send` 不保證送出全部 bytes。因此 C、Go、Rust 都會持續
-  寫入到完整 response 已送出，或回報錯誤。
-- 此步固定使用 `Connection: close`：server 寫完 response 後關閉 connection，
-  client 可由 EOF 知道這次 response 結束。keep-alive 與多個 request 尚未實作。
+- chunk extensions，例如 `4;name=value`；
+- 禁止的 trailer field names；
+- 根據 `Transfer-Encoding` 自動選擇 parser；
+- chunked response、keep-alive、TLS 或 HTTP/2。
+
+這些限制是為了讓注意力放在 byte framing 與 state machine，而不是完整 RFC 相容性。
 
 ## 驗收
 
@@ -42,42 +41,34 @@ make verify
 ```
 
 它會執行 C 的 strict warnings、sanitizers 與 tests，Go 的 `gofmt`、`go vet`
-與 tests，以及 Rust 的 `cargo fmt --check`、Clippy 與 tests；同時保留所有前面
-Step 1–6 的回歸測試。
+與 tests，以及 Rust 的 `cargo fmt --check`、Clippy 與 tests；並保留 Step 1–7
+的回歸驗證。
 
 ## Function 對照
 
 | 責任 | C | Go | Rust |
-| --- | --- | --- | --- |
-| 建立固定 200 response | [`http_response_basic_ok`](c/http_response.c) | [`httpresponse.BasicOK`](go/internal/httpresponse/response.go) | [`Response::basic_ok`](rust/src/lib.rs) |
-| 組裝 response bytes | [`http_response_build`](c/http_response.c) | [`Response.Bytes`](go/internal/httpresponse/response.go) | [`Response::bytes`](rust/src/lib.rs) |
-| 接收一次並回寫 response | [`tcp_server_respond_once`](c/tcp_server.c) | [`StartResponseOnce`](go/internal/tcpserver/server.go) | [`TcpServer::start_response_once`](rust/src/lib.rs) |
-| TCP byte-exact 驗收 | [`response_acceptance_test.c`](c/tests/response_acceptance_test.c) | [`response_acceptance_test.go`](go/internal/tcpserver/response_acceptance_test.go) | [`response_acceptance.rs`](rust/tests/response_acceptance.rs) |
+| --- | --- | --- |
+| 建立 parser | [`chunked_parser_new`](c/chunked_parser.c) | [`NewChunkedParser`](go/internal/httprequest/chunked.go) | [`ChunkedParser::new`](rust/src/lib.rs) |
+| 增量接收 bytes | [`chunked_parser_feed`](c/chunked_parser.c) | [`ChunkedParser.Feed`](go/internal/httprequest/chunked.go) | [`ChunkedParser::feed`](rust/src/lib.rs) |
+| 讀取 body、trailers、remaining | [`chunked_parser_body`](c/chunked_parser.c) 等 accessors | [`Body`、`Trailers`、`Remaining`](go/internal/httprequest/chunked.go) | [`body`、`trailers`、`remaining`](rust/src/lib.rs) |
+| Shared fixture 驗收 | [`chunked_acceptance_test.c`](c/tests/chunked_acceptance_test.c) | [`chunked_acceptance_test.go`](go/internal/httprequest/chunked_acceptance_test.go) | [`chunked_acceptance.rs`](rust/tests/chunked_acceptance.rs) |
 
-C 明確配置與釋放 response buffer；Go 以 slice、`error`、`defer` 和 `io.Writer`
-處理寫入；Rust 以 `Vec<u8>`、`Result`、`write_all` 與 thread/RAII 管理資源。
-三者的 observable behavior 相同，但不做逐行翻譯。
+C 以 opaque parser、手動 buffer 成長與 `free` 表達 ownership；Go 以 slice、
+`error` 與 callback 處理 state transition；Rust 以 `Vec<u8>`、enum state 與借用的
+accessor 保持記憶體安全。三者保證相同 observable behavior，但不逐行翻譯。
 
 ## 重要檔案
 
-- [`testdata/responses/basic/`](testdata/responses/basic)：request 與預期 response
-  的原始 bytes。
-- [`go/internal/httpresponse/response.go`](go/internal/httpresponse/response.go)：Go
-  的 response serializer。
-- [`c/http_response.c`](c/http_response.c)：C 的 response builder。
-- [`rust/src/lib.rs`](rust/src/lib.rs)：Rust 的 `Response` 與 one-shot response
-  server。
-
-## 這一步刻意不做
-
-- 依據 method、path 或 application handler 選擇不同 response。
-- 完整解析並驗證 request 後才回應；此處只需要讀到非空 request bytes。
-- keep-alive、多 request pipeline、chunked response、TLS、HTTP/2 或 framework。
+- [`testdata/chunked/`](testdata/chunked/)：完整、fragmented trailer 與 malformed
+  framing 的共享 bytes fixtures。
+- [`c/chunked_parser.c`](c/chunked_parser.c)：C 的 chunked state machine。
+- [`go/internal/httprequest/chunked.go`](go/internal/httprequest/chunked.go)：Go 實作。
+- [`rust/src/lib.rs`](rust/src/lib.rs)：Rust 的 `ChunkedParser` 與 `ChunkedState`。
 
 ## 導覽
 
-- 前一階段：[Step 6：HTTP Body](https://github.com/zrkluke/raw-http-server/tree/step-6-body-v1)
-- 目前分支：`step-7-responses`
+- 前一階段：[Step 7：HTTP Responses](https://github.com/zrkluke/raw-http-server/tree/step-7-responses-v2)
+- 目前分支：`step-8-chunked-encoding`
 - 完整學習地圖：[main README](https://github.com/zrkluke/raw-http-server/tree/main)
 - 環境與流程：[development setup](docs/development-setup.md)、
   [development workflow](docs/development-workflow.md)

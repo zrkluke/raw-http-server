@@ -124,6 +124,12 @@ Each implementation SHALL process the course-defined HTTP/1.1 chunked transfer f
 - **WHEN** chunk-size lines, chunk data, delimiters, and trailers cross arbitrary input boundaries
 - **THEN** the decoded payload and trailers equal those produced from the unfragmented message
 
+#### Scenario: Chunked coding stays within the course scope
+- **WHEN** a milestone implementation decodes chunked transfer coding
+- **THEN** it SHALL accept hexadecimal chunk sizes, chunk data, the zero-size terminating chunk, and trailer fields using the existing header grammar
+- **AND** it SHALL reject malformed chunk framing
+- **AND** chunk extensions, forbidden trailer names, and `Transfer-Encoding` selection integration remain outside this course milestone
+
 ### Requirement: Milestone 9 Binary Data
 Each implementation SHALL transmit and receive protocol payloads as bytes without corrupting non-text data.
 

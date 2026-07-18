@@ -65,11 +65,11 @@
 
 ## 9. Milestone 8 - Chunked Encoding
 
-- [ ] 9.1 Add failing shared fixtures for chunk sizes, data, terminator, trailers, malformed input, and fragmentation
-- [ ] 9.2 Implement and unit-test the course-defined chunked transfer behavior in Go
-- [ ] 9.3 Implement and unit-test equivalent chunked transfer behavior in C
-- [ ] 9.4 Implement and unit-test equivalent chunked transfer behavior in Rust
-- [ ] 9.5 Run unified regression and integration checks, document the comparison, and create the verified milestone ref
+- [x] 9.1 Add failing shared fixtures for chunk sizes, data, terminator, trailers, malformed input, and fragmentation
+- [x] 9.2 Implement and unit-test the course-defined chunked transfer behavior in Go
+- [x] 9.3 Implement and unit-test equivalent chunked transfer behavior in C
+- [x] 9.4 Implement and unit-test equivalent chunked transfer behavior in Rust
+- [x] 9.5 Run unified regression and integration checks, document the comparison, and create the verified milestone ref
 
 ## 10. Milestone 9 - Binary Data
 

@@ -81,3 +81,16 @@ not supplied, and any other value is invalid for this milestone.
 the input that must remain unconsumed after the parser reaches its terminal
 state. `state.txt` contains `incomplete`, `complete`, or `invalid`. This makes
 the over-delivered case observable without treating the body as text.
+
+## Chunked encoding metadata
+
+Fixtures under `testdata/chunked/` preserve raw HTTP/1.1 chunked
+transfer-coding bytes. Each case contains `input.bin`, decoded
+`expected.bin`, `state.txt`, `trailers.txt`, `remaining.bin`, and
+`chunks.txt`. Chunk sizes and CRLF delimiters are protocol bytes, not text
+normalised by the test harness.
+
+This course supports hexadecimal chunk sizes, a zero-size terminator, and
+trailers parsed with the existing header grammar. Chunk extensions, forbidden
+trailer-name rules, and `Transfer-Encoding` selection integration are outside
+this milestone.
