@@ -1,87 +1,75 @@
-# 第 9 步：二進位資料
+# 從 TCP 位元組串流手寫 HTTP/1.1：C、Go、Rust 對照學習
 
-這個里程碑把前八步的元件接成一條只處理單一連線的 HTTP/1.1 伺服器流程。
-它不是路由框架，也不是可供正式環境使用的伺服器；目標是理解同一條 TCP 位元組
-串流中，文字格式的訊息頭與不透明的二進位資料本體如何正確分界。
+這是一個學習型專案：不使用現成 HTTP server、HTTP parser 或 web framework，
+而是從 TCP socket 讀到的 bytes 開始，逐步手寫 HTTP/1.1 的核心機制。
 
-## 已完成的行為
+同一組行為會分別以 C、Go、Rust 實作。重點不是把程式逐行翻譯，而是比較同一責任
+在不同語言中如何表達：C 的 buffer、pointer 與 cleanup，Go 的 slice、`error` 與
+goroutine，以及 Rust 的 ownership、`Result` 與 RAII。
 
-伺服器接受一個 `POST /echo HTTP/1.1` 請求，依據標頭選擇唯一合法的資料本體定界
-方式：
+## 你會學到什麼
 
-```text
-TCP 讀取資料
-  -> 使用嚴格 CRLF 解析請求訊息頭
-  -> 解析請求列與標頭
-  -> Content-Length 資料本體，或 Transfer-Encoding: chunked 資料本體
-  -> 回傳帶有完全相同解碼位元組的 200 image/bmp 回應
-```
+- TCP 是沒有訊息邊界的 byte stream；一次 `read` 不等於一次 HTTP request。
+- HTTP/1.1 如何用 CRLF、request line、headers 與 body framing 建立訊息邊界。
+- 為什麼 parser 必須處理逐 byte、CRLF 跨 read、欄位跨 read 與多種切分方式。
+- `Content-Length`、chunked transfer encoding 與 binary body 如何影響 socket 讀取。
+- 三種語言如何以不同的型別、錯誤與資源管理模型完成相同行為。
 
-C、Go、Rust 都會執行三個 TCP 黑箱驗收案例：
+## 學習路徑
 
-1. `Content-Length` 二進位資料本體：回應本體與請求本體完全相同。
-2. `Transfer-Encoding: chunked` 二進位資料本體：解碼後回應完全相同。
-3. 同時提供 `Content-Length` 和 `Transfer-Encoding: chunked`：回傳
-   `400 Bad Request`，且不回傳請求資料本體。
+| Step | 主題 | 建立的責任 |
+| --- | --- | --- |
+| 1 | HTTP Streams | 從 fragmented TCP bytes 讀出 CRLF line |
+| 2 | TCP | listen、connect、accept、read、cleanup |
+| 3 | Requests | 區分 incomplete、complete、invalid request head |
+| 4 | Request Lines | 驗證 method、target、`HTTP/1.1` |
+| 5 | Headers | 增量解析、名稱正規化與 CRLF termination |
+| 6 | Body | 依 `Content-Length` 精確讀取 bytes |
+| 7 | Responses | 序列化與傳送 HTTP response |
+| 8 | Chunked Encoding | 解碼 chunk size、data、terminator 與 trailers |
+| 9 | Binary Data | 將前八步組成一條 byte-safe HTTP connection 流程 |
 
-每個請求都拆成多次 TCP 寫入；用戶端在收到回應前不關閉寫入端。因此通過測試代表
-伺服器是在資料本體定界完成時回應，而不是依賴 TCP EOF 或剛好一次讀完整個訊息。
+## 三語言怎麼對照
 
-## 二進位測試資料
+| 概念 | C | Go | Rust |
+| --- | --- | --- | --- |
+| CRLF stream line | `c/line_reader.*` | `go/internal/httpstream/line_reader.go` | `rust/src/line_reader.rs` |
+| TCP lifecycle / binary echo | `c/tcp_server.*`、`c/http_echo_server.*` | `go/internal/tcpserver/server.go` | `rust/src/tcp_server.rs` |
+| Request parsing | `c/request_parser.*`、`c/request_line.*` | `go/internal/httprequest/request*.go` | `rust/src/request.rs`、`rust/src/request_line.rs` |
+| Headers / body / chunked | `c/*_parser.*` | `go/internal/httprequest/{header,body,chunked}.go` | `rust/src/{header,body,chunked}.rs` |
+| Response bytes | `c/http_response.*` | `go/internal/httpresponse/response.go` | `rust/src/response.rs` |
 
-[`testdata/binary/echo-bmp/image.bmp`](testdata/binary/echo-bmp/image.bmp) 是一個
-58-byte 的真實 1×1 BMP 圖片，其中包含 NUL、LF 和非 ASCII 位元組。驗收請求會再
-加上原始 `\r\n` 作為資料本體後綴。這刻意讓二進位資料本體含有 HTTP 文字訊息頭
-也使用的分隔位元組，證明資料本體不能交給逐行或標頭解析器處理。
+[Rust Module Map](docs/rust-module-map.md) 提供更完整的 Rust 檔案與 C／Go 對照。
 
-## 為什麼把二進位資料放在最後
+## Step 9：把前八步接成一條 HTTP connection
 
-TCP 從第 1 步開始就只傳遞位元組；第 9 步不是才開始「支援位元組」。差別在
-HTTP/1.1 的混合定界方式：請求列與標頭是依 CRLF 和分隔符解析的文字中繼資料，
-資料本體則必須依 `Content-Length` 或 chunked 結構，以長度和狀態機解析，並保留
-原始位元組。
+Step 9 的 one-request `POST /echo HTTP/1.1` server 會選擇唯一合法的
+`Content-Length` 或 course-defined `Transfer-Encoding: chunked` framing，並以
+`image/bmp` 回傳完全相同的 bytes。它拒絕兩種 framing 同時出現的請求，也不需要
+客戶端先送 EOF 才回應。
 
-前面的步驟分別把串流、請求列、標頭、固定長度資料本體、回應與 chunked 解碼做成
-可單獨驗證的元件。這一步才將它們放進同一個 socket 讀取迴圈，使訊息頭／資料本體
-邊界與模糊的定界方式成為可觀察的整合行為。
-
-HTTP/2 與 HTTP/3 都以二進位框架表示 HTTP 訊息；這減少 HTTP/1.1「文字訊息頭加上
-二進位資料本體」交界的解析負擔，並帶來多路複用、標頭壓縮等能力。它們不在本專案
-範圍內；第 9 步的目的只是建立理解這個設計演進所需的位元組定界基礎。
+TCP 從 Step 1 開始傳遞的就是 bytes；差別在 HTTP/1.1 的 request line 與 headers
+以 delimiter 解析，body 則必須依長度或 chunked 結構定界。binary body 可以包含
+`\r\n`，所以不能交給逐行 parser。把這個整合放在最後，能清楚看見 HTTP/1.1
+「文字訊息頭 + 不透明 body」交界的複雜性，也為理解 HTTP/2、HTTP/3 的 binary
+frames、多路複用與 header compression 鋪路；後兩者不在本專案範圍。
 
 ## 驗證
 
-請在 Ubuntu on WSL 的 repository root 執行：
+在 Ubuntu on WSL、repository root 執行：
 
 ```bash
 make verify
 ```
 
-它會執行 C 的嚴格警告檢查、原生測試、ASan/UBSan，Go 的 `gofmt`、`go vet` 與測試，
-以及 Rust 的格式檢查、`clippy` 與測試。
+它會執行 C strict warnings 與 sanitizers、Go vet/tests、Rust format/clippy/tests，
+以及 shared fixtures 與 TCP integrations。
 
-## 函式對照
+## 範圍、文件與版本
 
-| 責任 | C | Go | Rust |
-| --- | --- | --- | --- |
-| 單一請求的連線處理迴圈 | `http_echo_server_serve_once` | `serveEchoOnce` | `serve_echo_once` |
-| 資料本體定界方式選擇 | `select_framing` | `selectRequestFraming` | `select_echo_framing` |
-| 固定長度資料本體 | `body_parser` | `BodyParser` | `BodyParser` |
-| chunked 資料本體 | `chunked_parser` | `ChunkedParser` | `ChunkedParser` |
-| 回應位元組序列化 | `http_response_build` | `httpresponse.New` | `Response::bytes` |
-
-C 以檔案描述符、`unsigned char *` 和明確的 `free` 表達資源責任；Go 以 slice、`error`
-和 goroutine 管理 listener；Rust 則由 `Vec<u8>` 的所有權、`Result` 和 `drop` 負責
-資源釋放。三者的可觀察行為相同，但不追求逐行翻譯。
-
-## 刻意未做
-
-- 多請求 keep-alive、路由、檔案 I/O、MIME 判斷或 range request
-- chunk extension、transfer-coding 組合、完整 RFC 標頭與定界規則
-- TLS、HTTP/2、HTTP/3 或正式環境的防護措施
-
-## 導覽
-
-- 前一里程碑：[第 8 步：Chunked Encoding](https://github.com/zrkluke/raw-http-server/tree/step-8-chunked)
-- 完整專案入口：[main](https://github.com/zrkluke/raw-http-server/tree/main)
-- 環境與流程：[development setup](docs/development-setup.md) · [development workflow](docs/development-workflow.md)
+- 僅使用語言標準函式庫與作業系統 socket API；C 以 WSL Ubuntu 的 POSIX sockets
+  為準。
+- 不實作 keep-alive、routing、TLS、HTTP/2、HTTP/3、完整 RFC conformance 或任何
+  production hardening。
+- [開發環境](docs/development-setup.md) · [開發流程](docs/development-workflow.md) · [最終驗收矩陣](docs/course-completion.md)
+- 每個 `step-*-v*` tag 是已驗證的 milestone 快照；最終累積版本會在 `main`。
